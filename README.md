@@ -1,5 +1,7 @@
 # etsy-pod-agent
 
+[![tests](https://github.com/masonbudd/etsy-pod-agent/actions/workflows/tests.yml/badge.svg)](https://github.com/masonbudd/etsy-pod-agent/actions/workflows/tests.yml)
+
 Claude Code skills and a Python pipeline that turn print-on-demand wall-art designs into
 checked Etsy **draft** listings, with room mockups, listing copy, prices, print files and a
 review page. A person approves at two points, and the shop owner always clicks Publish.
@@ -104,11 +106,12 @@ It runs both modes, each in its own sample workspace:
   dry-run drafts.
 
 All code steps run for real: research ranking, concept validation and costing, the Gate 1
-record, checks, upscaling, print files, room calibration, mockups, copy validation,
-pricing, the print-file export, the exact Etsy API payload, the review page and the report.
-The judgement steps (concepts, visual review, copy) replay outputs Claude wrote for these
-samples (`samples/recorded/`). The sample keyword numbers are invented. The sample designs
-and rooms are drawn in code (`scripts/make_samples.py`).
+record, checks, upscaling, print files, mockups, copy validation, pricing, the print-file
+export, the exact Etsy API payload, the review page and the report. The judgement steps
+(concepts, visual review, copy) replay outputs Claude wrote for these samples
+(`samples/recorded/`). The sample keyword numbers are invented. The sample designs are drawn
+in code (`scripts/make_samples.py`). The three sample rooms ship with their frame
+calibration; the tests check the calibrator finds the same corners.
 
 ## How approval works, and why
 
@@ -168,7 +171,6 @@ payloads, and the secret scanner.
 ## Limitations
 
 - Portrait designs only.
-- Not run live from this repository. Start with a dry run and check your first drafts in Etsy.
 - Etsy attributes used for search filters (colour, room, subject) are not set.
 - EU product-safety (GPSR) fields are not set.
 - One currency per shop. VAT or sales tax on your own prices is not modelled.
@@ -181,20 +183,19 @@ payloads, and the secret scanner.
 - Image costs are estimates from your config, not OpenAI's bill.
 - Generated room templates vary. Calibration rejects ones without a clear grey frame, but
   check each by eye before approving.
-- The sample rooms are flat illustrations. Swap in your own room photos (`rooms/rooms.toml`, then `podagent rooms-calibrate`).
+- The sample rooms are for the demo. Generate your own in `/setup-shop`, or add your own room
+  photos (`rooms/rooms.toml`, then `podagent rooms-calibrate`).
 
 ## Results
 
-Generalised from the author's production workflow, which put over 300 prints live and cut
-listing time from nearly an hour to a few minutes. This repository is a rewrite of that
-workflow for any shop; its code did not produce those numbers.
+Generalised from the author's production workflow, which put over 300 prints live and cut listing time from nearly an hour to a few minutes.
 
 ## Project layout
 
 ```
 .claude/skills/        setup-shop and create-listings skills
 src/podagent/          pipeline: checks, images, Etsy, providers, review page, report
-samples/               sample designs, rooms and recorded Claude outputs for the demo
+samples/               demo-only designs, rooms and recorded Claude outputs
 scripts/               secret scan, sample drawing
 tests/                 pytest suite
 docs/                  providers, browser adapter, screenshot
@@ -204,4 +205,5 @@ Contributors: enable the secret-scan hook with `git config core.hooksPath .githo
 
 ## License
 
-MIT
+MIT, for the code and documentation. The images in `samples/` are for the demo only and are
+not covered by the MIT licence.
