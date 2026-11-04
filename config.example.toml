@@ -105,7 +105,6 @@ width_in = 5
 height_in = 7
 cost_print = 6.50
 cost_framed = 20.00
-price_print = 9.99                   # entry price below target margin: it will be flagged
 
 [[sizes]]
 name = "8x10 in / 20x25 cm"

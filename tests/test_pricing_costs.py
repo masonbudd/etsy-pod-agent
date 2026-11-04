@@ -29,7 +29,13 @@ def test_impossible_margin_is_an_error(cfg):
         pricing.price_for(5, fees, 0.95)
 
 
+def test_default_prices_clear_the_minimum_margin(cfg):
+    rows = [r for r in pricing.price_table(cfg) if r.enabled]
+    assert not any(r.low_margin for r in rows) and min(r.margin for r in rows) >= cfg["pricing"]["min_margin"]
+
+
 def test_table_flags_fixed_prices_below_minimum(cfg):
+    cfg["sizes"][0]["price_print"] = 9.99
     rows = pricing.price_table(cfg)
     entry = next(r for r in rows if r.size_code == "5x7" and r.frame == "Print only")
     assert entry.fixed_price and entry.price == 9.99 and entry.low_margin
