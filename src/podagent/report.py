@@ -24,7 +24,12 @@ def build(batch: Batch) -> dict:
         "time": {"pipeline_seconds": round(sum(r.get("seconds") or 0 for r in runs), 1), "runs": len(runs),
                  "elapsed_seconds": round((datetime.fromisoformat(last) - created).total_seconds()),
                  "note": "pipeline_seconds is machine time; elapsed includes time spent on human review"},
-        "concepts": {"proposed": len(concepts), "approved": sum(1 for c in concepts if c.get("decision") == "approved")},
+        "concepts": {"proposed": len(concepts), "approved": sum(1 for c in concepts if c.get("decision") == "approved"),
+                     "edited": sum(1 for c in concepts if c.get("edited")),
+                     "rejected": sum(1 for c in concepts if c.get("decision") == "rejected"),
+                     "approved_estimate_usd": round(sum(c.get("estimate_usd") or 0 for c in concepts
+                                                        if c.get("decision") == "approved"), 4)},
+        "regenerations": sum(it.get("regenerations", 0) for it in items.values()),
         "designs": len(items),
         "passed_checks": sum(1 for it in items.values() if it["steps"].get("checks", {}).get("verdict") == "pass"),
         "held": [{"item": i, "step": it["held"]["step"], "reasons": it["held"]["reasons"], "fix": it["held"]["fix"]}
@@ -43,7 +48,10 @@ def markdown(r: dict) -> str:
     lines = [f"# Run report: {r['batch']}", "",
              f"- Mode: {r['mode']}",
              f"- Pipeline time: {t['pipeline_seconds']} s over {t['runs']} run(s); elapsed {t['elapsed_seconds']} s",
-             f"- Concepts proposed / approved: {r['concepts']['proposed']} / {r['concepts']['approved']}",
+             f"- Concepts proposed / approved: {r['concepts']['proposed']} / {r['concepts']['approved']}"
+             + (f" ({r['concepts']['edited']} edited, {r['concepts']['rejected']} rejected; "
+                f"estimated image cost ${r['concepts']['approved_estimate_usd']:.2f})" if r["concepts"]["proposed"] else ""),
+             f"- Regenerations: {r['regenerations']}",
              f"- Designs: {r['designs']}, passed checks: {r['passed_checks']}",
              f"- Etsy drafts created: {r['drafts_created']}" + (f" (plus {r['dry_run_drafts']} dry-run)" if r["dry_run_drafts"] else ""),
              f"- Held: {len(r['held'])}",

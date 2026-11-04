@@ -156,8 +156,15 @@ def code_checks(img: Image.Image, name: str, cfg: dict, others: dict[str, int]) 
     }
 
 
-def verdict(code: dict, vision: dict, cfg: dict) -> dict:
+def _words(text: str) -> str:
+    return " ".join("".join(ch if ch.isalnum() else " " for ch in text.upper()).split())
+
+
+def verdict(code: dict, vision: dict, cfg: dict, expected_lettering: str = "") -> dict:
     reasons, fixes = [], []
+    if expected_lettering and _words(vision.get("lettering", "")) != _words(expected_lettering):
+        reasons.append(f"lettering reads {vision.get('lettering', '')!r}; the concept says {expected_lettering!r}")
+        fixes.append("regenerate with the exact wording")
     if not code["orientation"]["ok"]:
         reasons.append("landscape design: this version supports portrait prints only")
         fixes.append("rotate or recompose as portrait")

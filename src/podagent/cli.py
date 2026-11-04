@@ -115,8 +115,110 @@ def cmd_rooms_calibrate(args) -> int:
 
 def cmd_new(args) -> int:
     ws, cfg, _ = _load(args)
+    if args.generate:
+        b = pipeline.new_generate_batch(ws, cfg, count=args.count)
+        print(json.dumps({"batch": b.id, "mode": "generate", "concepts_wanted": b.data["requested_count"]}, indent=1))
+        return 0
     b = pipeline.new_batch(ws, cfg, count=args.count)
     print(json.dumps({"batch": b.id, "items": {i: it["sku"] for i, it in b.items.items()}}, indent=1))
+    return 0
+
+
+def cmd_research(args) -> int:
+    from podagent import research
+    ws, cfg, _ = _load(args)
+    b = _batch(ws, cfg, args.batch)
+    r = research.gather(b.dir, ws.root, cfg)
+    print(json.dumps({"sources_used": r["used"], "per_source": r["sources"], "dropped_banned": r["dropped_banned"],
+                      "top": [s["phrase"] for s in r["signals"][:15]],
+                      "file": str(b.dir / "research" / "research.json")}, indent=1))
+    if not r["signals"]:
+        print("No research found. Save ProfitTree results to research/profittree.json in the batch, "
+              f"or add {cfg.get('research', {}).get('keyword_csv', 'research/keywords.csv')}.", file=sys.stderr)
+        return WAITING
+    return 0
+
+
+def cmd_concepts(args) -> int:
+    """Validate concepts.json, price it, and write the Gate 1 page. Exit 2 while decisions are missing."""
+    from podagent import concepts as CC
+    ws, cfg, _ = _load(args)
+    b = _batch(ws, cfg, args.batch)
+    data = CC.load_file(b)
+    if data is None:
+        print(f"waiting: write {b.dir / 'concepts.json'}")
+        return WAITING
+    rpath = b.dir / "research" / "research.json"
+    errors, warnings = CC.validate(data, cfg, json.loads(rpath.read_text(encoding="utf-8")) if rpath.exists() else None,
+                                   b.data.get("requested_count", cfg["batch"]["max_count"]))
+    if errors:
+        print("concepts.json needs fixing:\n  " + "\n  ".join(errors))
+        return WAITING
+    CC.load_into_state(b, cfg, data)
+    page = CC.write_gate_page(b, cfg, warnings)
+    s = CC.summary(b)
+    print(CC.markdown_table(b))
+    print(json.dumps({**s, "warnings": warnings, "gate_page": str(page)}, indent=1))
+    return WAITING if s["undecided"] else 0
+
+
+def cmd_decide(args) -> int:
+    from podagent import concepts as CC
+    ws, cfg, _ = _load(args)
+    b = _batch(ws, cfg, args.batch)
+    edits = dict(args.edit or [])
+    CC.decide(b, args.approve or [], args.reject or [], edits, args.note or "")
+    CC.write_gate_page(b, cfg, [])
+    print(CC.markdown_table(b))
+    print(json.dumps(CC.summary(b), indent=1))
+    return 0
+
+
+def _image_client(env, cfg):
+    from podagent.generate import ImageClient
+    if not env.get("OPENAI_API_KEY"):
+        raise SystemExit("OPENAI_API_KEY is missing from .env")
+    return ImageClient(env["OPENAI_API_KEY"], cfg)
+
+
+def cmd_generate(args) -> int:
+    from podagent import generate
+    ws, cfg, env = _load(args)
+    b = _batch(ws, cfg, args.batch)
+    res = generate.run(b, cfg, _image_client(env, cfg), pipeline.taken_skus(ws.path(cfg, "batches")), args.retry_unsaved)
+    print(json.dumps(res, indent=1))
+    print(f"Next: podagent run {b.id}")
+    return 0
+
+
+def cmd_rooms_generate(args) -> int:
+    from podagent import rooms_gen
+    ws, cfg, env = _load(args)
+    est = rooms_gen.estimate(cfg, args.count)
+    print(json.dumps({"rooms": [p["name"] for p in rooms_gen.plan(cfg, args.count)], "estimate": est}, indent=1))
+    if not args.confirm:
+        print("Nothing generated. Rerun with --confirm to spend the estimate above.")
+        return 0
+    for r in rooms_gen.generate(ws.path(cfg, "rooms"), cfg, _image_client(env, cfg), args.count):
+        print(f"{r['name']}: {'frame found' if r.get('frame_found') else 'NO FRAME'}" + "".join(f"\n  WARNING {w}" for w in r["warnings"]))
+    print(f"Look at them in {ws.path(cfg, 'rooms') / 'candidates'}, then rooms-approve or rooms-regenerate each.")
+    return 0
+
+
+def cmd_rooms_decide(args) -> int:
+    from podagent import rooms_gen
+    ws, cfg, env = _load(args)
+    rooms = ws.path(cfg, "rooms")
+    if args.cmd == "rooms-approve":
+        rec = rooms_gen.approve(rooms, args.name, args.alt)
+    elif args.cmd == "rooms-reject":
+        rec = rooms_gen.reject(rooms, args.name)
+    else:
+        if not args.confirm:
+            print(f"Regenerating costs about ${rooms_gen.estimate(cfg, 1).get('expected_usd', '?')}. Rerun with --confirm.")
+            return 0
+        rec = rooms_gen.regenerate(rooms, cfg, _image_client(env, cfg), args.name)
+    print(json.dumps({k: rec.get(k) for k in ("name", "status", "frame_found", "ratio_measured", "warnings")}, indent=1))
     return 0
 
 
@@ -217,12 +319,19 @@ def cmd_review(args) -> int:
 
 def cmd_demo(args) -> int:
     from podagent import demo
-    res = demo.run(Path(args.out))
-    print(f"Drafted (dry run): {', '.join(res['drafted']) or 'none'}")
-    for item, reasons in res["held"].items():
-        print(f"Held: {item}: {'; '.join(reasons)}")
-    print(f"Open the review page: {res['review_page']}")
-    return 1 if res["errors"] else 0
+    results = demo.run(Path(args.out), args.mode)
+    failed = False
+    for name, res in results.items():
+        print(f"\n[{name}]")
+        if "generated" in res:
+            print(f"Gate 1 page: {res['gate_page']}")
+            print(f"Generated (replayed, not charged): {', '.join(res['generated']) or 'none'}")
+        print(f"Drafted (dry run): {', '.join(res['drafted']) or 'none'}")
+        for item, reasons in res["held"].items():
+            print(f"Held: {item}: {'; '.join(reasons)}")
+        print(f"Review page: {res['review_page']}")
+        failed = failed or bool(res["errors"])
+    return 1 if failed else 0
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -236,7 +345,26 @@ def main(argv: list[str] | None = None) -> int:
     s = sub.add_parser("etsy-discover", help="find shop, shipping, returns and processing IDs")
     s.add_argument("--first", action="store_true", help="take the first option where there are several"); s.set_defaults(fn=cmd_etsy_discover)
     sub.add_parser("rooms-calibrate", help="detect frame corners in the room templates").set_defaults(fn=cmd_rooms_calibrate)
-    s = sub.add_parser("new", help="start a batch from designs/inbox"); s.add_argument("--count", type=int); s.set_defaults(fn=cmd_new)
+    s = sub.add_parser("new", help="start a batch from designs/inbox, or an empty one with --generate")
+    s.add_argument("--count", type=int); s.add_argument("--generate", action="store_true"); s.set_defaults(fn=cmd_new)
+    s = sub.add_parser("research", help="merge research sources into the batch's research.json"); s.add_argument("batch")
+    s.set_defaults(fn=cmd_research)
+    s = sub.add_parser("concepts", help="check concepts.json, price it and write the Gate 1 page"); s.add_argument("batch")
+    s.set_defaults(fn=cmd_concepts)
+    s = sub.add_parser("decide", help="record Gate 1 decisions"); s.add_argument("batch")
+    s.add_argument("--approve", nargs="*"); s.add_argument("--reject", nargs="*")
+    s.add_argument("--edit", nargs=2, action="append", metavar=("ID", "PROMPT"), help="replace a prompt and approve it")
+    s.add_argument("--note"); s.set_defaults(fn=cmd_decide)
+    s = sub.add_parser("generate", help="generate approved concepts and regenerate held designs once"); s.add_argument("batch")
+    s.add_argument("--retry-unsaved", action="store_true", help="request again an image that was paid for but not saved")
+    s.set_defaults(fn=cmd_generate)
+    s = sub.add_parser("rooms-generate", help="generate room templates (shows the cost first)")
+    s.add_argument("--count", type=int, default=3); s.add_argument("--confirm", action="store_true"); s.set_defaults(fn=cmd_rooms_generate)
+    s = sub.add_parser("rooms-approve", help="use a generated room"); s.add_argument("name"); s.add_argument("--alt", required=True)
+    s.set_defaults(fn=cmd_rooms_decide)
+    s = sub.add_parser("rooms-reject", help="drop a generated room"); s.add_argument("name"); s.set_defaults(fn=cmd_rooms_decide)
+    s = sub.add_parser("rooms-regenerate", help="drop a generated room and make a new one"); s.add_argument("name")
+    s.add_argument("--confirm", action="store_true"); s.set_defaults(fn=cmd_rooms_decide)
     s = sub.add_parser("run", help="advance a batch as far as it can go"); s.add_argument("batch")
     s.add_argument("--dry-run", action="store_true", help="write Etsy payloads instead of creating drafts"); s.set_defaults(fn=cmd_run)
     s = sub.add_parser("brief", help="print the copywriting brief for Claude"); s.add_argument("batch"); s.set_defaults(fn=cmd_brief)
@@ -252,11 +380,12 @@ def main(argv: list[str] | None = None) -> int:
     s.set_defaults(fn=cmd_provider_link)
     s = sub.add_parser("review", help="rebuild the review page and report"); s.add_argument("batch"); s.set_defaults(fn=cmd_review)
     s = sub.add_parser("demo", help="run the pipeline on the bundled samples, no accounts needed")
-    s.add_argument("--out", default="demo_output"); s.set_defaults(fn=cmd_demo)
+    s.add_argument("--out", default="demo_output")
+    s.add_argument("--mode", choices=["both", "inbox", "generate"], default="both"); s.set_defaults(fn=cmd_demo)
     args = p.parse_args(argv)
     try:
         return args.fn(args)
-    except (C.ConfigError, FileNotFoundError, FileExistsError, KeyError) as e:
+    except (C.ConfigError, FileNotFoundError, FileExistsError, KeyError, ValueError) as e:
         print(f"error: {e}", file=sys.stderr)
         return 1
 

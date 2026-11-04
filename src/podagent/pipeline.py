@@ -105,6 +105,16 @@ def new_batch(ws: Workspace, cfg: dict, count: int | None = None, files: list[Pa
     return batch
 
 
+def new_generate_batch(ws: Workspace, cfg: dict, count: int | None = None, batch_id: str | None = None) -> Batch:
+    """An empty batch for generate mode: items are added when approved concepts are generated."""
+    batches = ws.path(cfg, "batches")
+    bid = batch_id or next_batch_id(cfg, batches)
+    batch = Batch.create(batches / bid, bid, "generate")
+    batch.data["requested_count"] = min(count or cfg["batch"]["default_count"], cfg["batch"]["max_count"])
+    batch.save()
+    return batch
+
+
 # -- steps -----------------------------------------------------------------
 
 def step_checks(ctx: Context, item_id: str) -> None:
@@ -125,7 +135,7 @@ def step_checks(ctx: Context, item_id: str) -> None:
         return
     img = Image.open(d / "source.png")
     code = checks.code_checks(img, b.items[item_id]["source"], ctx.cfg, _other_hashes(ctx, item_id))
-    v = checks.verdict(code, vision, ctx.cfg)
+    v = checks.verdict(code, vision, ctx.cfg, b.items[item_id].get("lettering_expected", ""))
     (d / "checks.json").write_text(json.dumps({"code": code, "vision": vision, **v}, indent=1, default=str), encoding="utf-8")
     b.mark(item_id, "checks", verdict=v["verdict"], warnings=v["warnings"], reasons=v["reasons"], dhash=code["dhash"],
            subject=vision["subject"], lettering=vision["lettering"])

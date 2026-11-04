@@ -110,6 +110,19 @@ def _held_card(batch: Batch, item_id: str) -> str:
 <ul>{''.join(f"<li class='bad'>{escape(r)}</li>" for r in h['reasons'])}</ul><p class="row"><b>Suggested fix:</b> {escape(h['fix'])}</p></div></section>"""
 
 
+def _gate1(batch: Batch) -> str:
+    cs = batch.data.get("concepts", [])
+    if not cs:
+        return ""
+    rows = "".join(
+        f"<tr class='{'off' if c.get('decision') == 'rejected' else ''}'><td>{escape(c['id'])}</td><td>{escape(c['target_keyword'])}</td>"
+        f"<td>{escape((c.get('decision') or 'waiting') + (', edited' if c.get('edited') else ''))}</td>"
+        f"<td>{'' if c.get('estimate_usd') is None else '$' + format(c['estimate_usd'], '.3f')}</td>"
+        f"<td>{escape(c.get('note') or '')}</td></tr>" for c in cs)
+    return (f"<h2>Gate 1: concepts ({sum(1 for c in cs if c.get('decision') == 'approved')} of {len(cs)} approved)</h2>"
+            f"<table><tr><th>Concept</th><th>Target keyword</th><th>Decision</th><th>Est. cost</th><th>Note</th></tr>{rows}</table>")
+
+
 def write(batch: Batch, cfg: dict, report: dict) -> Path:
     items = batch.items
     drafted = [i for i, it in items.items() if it["steps"].get("draft", {}).get("status") == "done"]
@@ -123,6 +136,7 @@ def write(batch: Batch, cfg: dict, report: dict) -> Path:
 <h1>Review batch {escape(batch.id)}</h1><p class="sub">Generated {escape(report['generated'])} · mode: {escape(batch.data['mode'])}</p>
 <div class="banner">Nothing here is live. Each listing below is an Etsy <b>draft</b>. Check it, then click Publish in Etsy yourself.</div>
 <div class="stats">{''.join(f'<div class="stat"><b>{escape(str(n))}</b><span>{escape(l)}</span></div>' for n, l in stats)}</div>
+{_gate1(batch)}
 <h2>Drafts ({len(drafted)})</h2>{''.join(_draft_card(batch, i, cfg) for i in drafted) or '<p class="sub">None yet.</p>'}
 <div class="held"><h2>Held ({len(held)})</h2>{''.join(_held_card(batch, i) for i in held) or '<p class="sub">Nothing held.</p>'}</div>
 {f'<h2>Still in progress ({len(waiting)})</h2><p class="sub">{escape(", ".join(waiting))}: run <code>podagent run {escape(batch.id)}</code> again.</p>' if waiting else ''}

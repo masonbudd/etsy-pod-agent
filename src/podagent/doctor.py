@@ -40,7 +40,7 @@ def run(ws: Workspace, cfg: dict, env: dict, online: bool = False, etsy_factory=
 
     out.append(Check("OpenAI API key", bool(env.get("OPENAI_API_KEY")),
                      "set" if env.get("OPENAI_API_KEY") else "only needed to generate designs or rooms; add OPENAI_API_KEY to .env"))
-    csv = ws.root / "research" / "keywords.csv"
+    csv = ws.root / cfg.get("research", {}).get("keyword_csv", "research/keywords.csv")
     out.append(Check("Research source", True, "keyword CSV found" if csv.exists() else
                      "Claude checks for the ProfitTree MCP in the skill; otherwise add research/keywords.csv"))
     out.append(Check("Claude in Chrome", True, "checked by Claude in the skill; needed for the AI-disclosure tick "
