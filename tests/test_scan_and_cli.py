@@ -68,3 +68,25 @@ def test_cli_init_then_new_batch(tmp_path, capsys):
 def test_cli_reports_missing_config(tmp_path, capsys):
     assert cli.main(["--root", str(tmp_path), "doctor"]) == 1
     assert "podagent init" in capsys.readouterr().err
+
+
+def test_cli_generate_mode_waits_at_gate1(tmp_path, capsys):
+    root = ["--root", str(tmp_path)]
+    cli.main(root + ["init"])
+    assert cli.main(root + ["new", "--generate", "--count", "2"]) == 0
+    batch = next((tmp_path / "batches").iterdir()).name
+    assert cli.main(root + ["concepts", batch]) == 2                       # no concepts.json yet
+    (tmp_path / "batches" / batch / "concepts.json").write_text(
+        '{"concepts": [{"id": "a", "title": "A", "target_keyword": "k", "why": "w", "prompt": "p"}]}', encoding="utf-8")
+    assert cli.main(root + ["concepts", batch]) == 2                       # waiting for a decision
+    assert cli.main(root + ["decide", batch, "--approve", "a"]) == 0
+    assert cli.main(root + ["concepts", batch]) == 0
+    assert "approved" in capsys.readouterr().out
+
+
+def test_cli_rooms_generate_shows_cost_and_spends_nothing_without_confirm(tmp_path, capsys):
+    root = ["--root", str(tmp_path)]
+    cli.main(root + ["init"])
+    assert cli.main(root + ["rooms-generate", "--count", "2"]) == 0
+    out = capsys.readouterr().out
+    assert "Nothing generated" in out and '"expected_usd": 0.082' in out

@@ -1,0 +1,29 @@
+{
+ "concepts": [
+  {
+   "id": "sun-over-hills",
+   "title": "Sun over hills",
+   "target_keyword": "minimalist landscape print",
+   "why": "Minimal landscapes sell across living rooms and bedrooms, and 'sunset wall art' and 'sage green wall art' show steady demand with lighter competition.",
+   "prompt": "Minimal flat-colour landscape: a large burnt-orange sun low over three layered rolling hills in sand, sage and deep forest green, on a pale peach sky. Two tiny birds. Simple hand-cut shapes, no texture, mid-century poster feel.",
+   "research_phrases": ["minimalist landscape print", "sunset wall art", "sage green wall art", "boho sun print"]
+  },
+  {
+   "id": "good-morning",
+   "title": "Good morning coffee",
+   "target_keyword": "coffee kitchen print",
+   "why": "Coffee prints are a steady kitchen gift, and 'coffee bar decor' and 'retro kitchen wall art' point to a retro, cheerful style.",
+   "prompt": "Retro kitchen poster on mustard yellow: a cream coffee cup with a blue band on a saucer, three wavy lines of steam, and the words GOOD MORNING in a clean dark sans-serif across the top.",
+   "lettering": "GOOD MORNING",
+   "research_phrases": ["coffee kitchen print", "coffee bar decor", "retro kitchen wall art"]
+  },
+  {
+   "id": "botanical-line-art",
+   "title": "Single-line botanical",
+   "target_keyword": "botanical line art",
+   "why": "Line-art botanicals have strong searches but heavy competition; a simple olive branch keeps it distinct.",
+   "prompt": "Single continuous black line drawing of an olive branch on warm off-white, generous empty space, minimalist.",
+   "research_phrases": ["botanical line art"]
+  }
+ ]
+}

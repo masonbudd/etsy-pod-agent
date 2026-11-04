@@ -148,10 +148,18 @@ def test_review_page_and_report(ws, small_cfg):
 
 
 @pytest.mark.slow
-def test_demo_runs_end_to_end(tmp_path):
+def test_demo_runs_both_modes_end_to_end(tmp_path):
     res = demo.run(tmp_path / "demo")
-    assert sorted(res["drafted"]) == ["good-morning", "sun-over-hills"]
-    assert list(res["held"]) == ["mid-century-arches"] and res["errors"] == {}
-    rep = json.loads((tmp_path / "demo/batches/demo/report.json").read_text())
+    inbox, gen = res["demo"], res["demo-generate"]
+    assert sorted(inbox["drafted"]) == ["good-morning", "sun-over-hills"]
+    assert list(inbox["held"]) == ["mid-century-arches"] and inbox["errors"] == {}
+    rep = json.loads((tmp_path / "demo/inbox/batches/demo/report.json").read_text())
     assert rep["passed_checks"] == 2 and rep["dry_run_drafts"] == 2
-    assert (tmp_path / "demo/batches/demo/provider_export/sku_sheet.csv").exists()
+    assert (tmp_path / "demo/inbox/batches/demo/provider_export/sku_sheet.csv").exists()
+
+    assert gen["generated"] == ["sun-over-hills", "good-morning"] and sorted(gen["drafted"]) == ["good-morning", "sun-over-hills"]
+    assert gen["research_dropped"] == ["mickey mouse poster"] and gen["errors"] == {}
+    grep = json.loads((tmp_path / "demo/generate/batches/demo-generate/report.json").read_text())
+    assert grep["concepts"] == {"proposed": 3, "approved": 2, "edited": 1, "rejected": 1, "approved_estimate_usd": 0.082}
+    assert grep["api_cost_usd"]["total"] == 0
+    assert "Gate 1" in (tmp_path / "demo/generate/batches/demo-generate/review.html").read_text(encoding="utf-8")

@@ -1,0 +1,7 @@
+{
+ "_about": "Sample Gate 1 decisions, standing in for the ones a user gives Claude in chat.",
+ "approve": ["sun-over-hills"],
+ "edit": {"good-morning": "Retro kitchen poster on mustard yellow: a cream coffee cup with a blue band on a saucer, three wavy lines of steam rising from it, and the words GOOD MORNING in a clean dark sans-serif across the top. Flat colours, no texture."},
+ "reject": ["botanical-line-art"],
+ "reject_note": "Line-art botanicals are too crowded for now."
+}

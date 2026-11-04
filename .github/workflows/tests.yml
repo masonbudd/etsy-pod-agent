@@ -30,4 +30,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: demo-review-page
-          path: demo_output/batches/demo
+          path: demo_output
