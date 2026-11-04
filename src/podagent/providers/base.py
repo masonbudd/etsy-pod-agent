@@ -3,6 +3,7 @@
 An adapter gets one checked, priced item and makes sure the provider can print every
 size and frame the listing offers. The core pipeline never names a provider.
 """
+
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
@@ -15,15 +16,16 @@ class ItemContext:
     batch_id: str
     item_id: str
     base_sku: str
-    variants: list[dict]                   # rows from the price table, each with "sku", "ratio", "enabled"
-    print_files: dict[str, Path]           # ratio key -> print-ready file
+    variants: list[dict]  # rows from the price table, each with "sku", "ratio", "enabled"
+    print_files: dict[str, Path]  # ratio key -> print-ready file
     batch_dir: Path
-    listing_id: int | None = None          # set once the Etsy draft exists
+    listing_id: int | None = None  # set once the Etsy draft exists
+    dry_run: bool = False  # external adapters must not send anything
 
 
 @dataclass
 class Result:
-    status: str                            # "done", "needs_action" or "failed"
+    status: str  # "done", "needs_action" or "failed"
     detail: str = ""
     todo: list[str] = field(default_factory=list)
     data: dict = field(default_factory=dict)
@@ -34,11 +36,13 @@ class Check:
     name: str
     ok: bool
     detail: str
+    optional: bool = False  # missing is fine; shown as "--" and doesn't fail doctor
 
 
 class Provider(ABC):
     name = "provider"
-    needs_listing_id = False               # True if prepare() needs the Etsy draft to exist first
+    needs_listing_id = False  # True if prepare() needs the Etsy draft to exist first
+    external = False  # True if prepare() sends files or data to the provider
 
     def __init__(self, cfg: dict, env: dict, transport=None):
         self.cfg, self.env, self.transport = cfg, env, transport

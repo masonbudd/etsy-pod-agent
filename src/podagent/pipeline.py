@@ -5,6 +5,7 @@ Steps: checks -> images -> mockups -> copy -> prices -> provider -> draft.
 Two steps wait for Claude: checks (vision.json) and copy (copy.json). The run reports what it
 is waiting for and Claude supplies it, then reruns.
 """
+
 from __future__ import annotations
 
 import json
@@ -36,7 +37,7 @@ class Context:
     batch: Batch
     dry_run: bool = False
     provider: object = None
-    etsy_factory: object = None          # builds the EtsyClient on first use, so dry runs need no account
+    etsy_factory: object = None  # builds the EtsyClient on first use, so dry runs need no account
     etsy: object = None
     waiting: dict = field(default_factory=dict)
     errors: dict = field(default_factory=dict)
@@ -55,6 +56,7 @@ class Context:
 
 
 # -- batches ---------------------------------------------------------------
+
 
 def next_batch_id(cfg: dict, batches: Path, today: date | None = None) -> str:
     today = today or date.today()
@@ -77,8 +79,15 @@ def inbox_files(ws: Workspace, cfg: dict) -> list[Path]:
     return sorted(p for p in inbox.iterdir() if p.suffix.lower() in IMAGE_EXT) if inbox.is_dir() else []
 
 
-def new_batch(ws: Workspace, cfg: dict, count: int | None = None, files: list[Path] | None = None,
-              mode: str = "inbox", batch_id: str | None = None, keep_originals: bool = False) -> Batch:
+def new_batch(
+    ws: Workspace,
+    cfg: dict,
+    count: int | None = None,
+    files: list[Path] | None = None,
+    mode: str = "inbox",
+    batch_id: str | None = None,
+    keep_originals: bool = False,
+) -> Batch:
     """Start a batch from the inbox (files are moved into the batch so they are never picked twice)."""
     limit = min(count or cfg["batch"]["default_count"], cfg["batch"]["max_count"])
     picks = (files if files is not None else inbox_files(ws, cfg))[:limit]
@@ -117,6 +126,7 @@ def new_generate_batch(ws: Workspace, cfg: dict, count: int | None = None, batch
 
 # -- steps -----------------------------------------------------------------
 
+
 def step_checks(ctx: Context, item_id: str) -> None:
     b, d = ctx.batch, ctx.batch.item_dir(item_id)
     vision_path = d / "vision.json"
@@ -136,9 +146,19 @@ def step_checks(ctx: Context, item_id: str) -> None:
     img = Image.open(d / "source.png")
     code = checks.code_checks(img, b.items[item_id]["source"], ctx.cfg, _other_hashes(ctx, item_id))
     v = checks.verdict(code, vision, ctx.cfg, b.items[item_id].get("lettering_expected", ""))
-    (d / "checks.json").write_text(json.dumps({"code": code, "vision": vision, **v}, indent=1, default=str), encoding="utf-8")
-    b.mark(item_id, "checks", verdict=v["verdict"], warnings=v["warnings"], reasons=v["reasons"], dhash=code["dhash"],
-           subject=vision["subject"], lettering=vision["lettering"])
+    (d / "checks.json").write_text(
+        json.dumps({"code": code, "vision": vision, **v}, indent=1, default=str), encoding="utf-8"
+    )
+    b.mark(
+        item_id,
+        "checks",
+        verdict=v["verdict"],
+        warnings=v["warnings"],
+        reasons=v["reasons"],
+        dhash=code["dhash"],
+        subject=vision["subject"],
+        lettering=vision["lettering"],
+    )
     if v["verdict"] == "hold":
         b.hold(item_id, "checks", v["reasons"], v["suggested_fix"])
 
@@ -175,8 +195,13 @@ def step_mockups(ctx: Context, item_id: str) -> None:
     d = ctx.batch.item_dir(item_id)
     subject = ctx.batch.step(item_id, "checks").get("subject") or "Art print"
     rooms = mockups.load_rooms(ctx.rooms_dir)
-    photos = mockups.build(d / "master.png", d / "photos", rooms, subject[:1].upper() + subject[1:],
-                           ctx.cfg["listing"].get("max_photos", 10))
+    photos = mockups.build(
+        d / "master.png",
+        d / "photos",
+        rooms,
+        subject[:1].upper() + subject[1:],
+        ctx.cfg["listing"].get("max_photos", 10),
+    )
     ctx.batch.mark(item_id, "mockups", photos=photos)
 
 
@@ -200,8 +225,12 @@ def step_copy(ctx: Context, item_id: str) -> None:
     (d / "copy_errors.json").write_text(json.dumps(errors, indent=1), encoding="utf-8")
     ctx.batch.mark(item_id, "copy", "waiting", rejected=rejected, errors=errors)
     if len(rejected) >= listing_copy.MAX_ATTEMPTS:
-        ctx.batch.hold(item_id, "copy", [f"copy failed validation {len(rejected)} times: " + "; ".join(errors)],
-                       "edit copy.json by hand, then `podagent release`")
+        ctx.batch.hold(
+            item_id,
+            "copy",
+            [f"copy failed validation {len(rejected)} times: " + "; ".join(errors)],
+            "edit copy.json by hand, then `podagent release`",
+        )
     else:
         ctx.waiting.setdefault("fix listing copy", []).append(f"{item_id}: {'; '.join(errors)}")
 
@@ -220,8 +249,16 @@ def step_prices(ctx: Context, item_id: str) -> None:
 def item_context(ctx: Context, item_id: str) -> ItemContext:
     it, d = ctx.batch.items[item_id], ctx.batch.item_dir(item_id)
     files = {k: d / "print" / f for k, f in it["steps"]["images"]["print_files"].items()}
-    return ItemContext(ctx.batch.id, item_id, it["sku"], it["steps"]["prices"]["variants"], files, ctx.batch.dir,
-                       it["steps"].get("draft", {}).get("listing_id"))
+    return ItemContext(
+        ctx.batch.id,
+        item_id,
+        it["sku"],
+        it["steps"]["prices"]["variants"],
+        files,
+        ctx.batch.dir,
+        it["steps"].get("draft", {}).get("listing_id"),
+        dry_run=ctx.dry_run,
+    )
 
 
 def step_provider(ctx: Context, item_id: str) -> None:
@@ -230,8 +267,16 @@ def step_provider(ctx: Context, item_id: str) -> None:
         ctx.batch.mark(item_id, "provider", "failed", adapter=ctx.provider.name, detail=res.detail)
         ctx.waiting.setdefault("fix provider settings", []).append(f"{item_id}: {res.detail}")
         return
-    ctx.batch.mark(item_id, "provider", adapter=ctx.provider.name, result=res.status, detail=res.detail, todo=res.todo,
-                   plan=res.data.get("plan"))
+    ctx.batch.mark(
+        item_id,
+        "provider",
+        adapter=ctx.provider.name,
+        result=res.status,
+        detail=res.detail,
+        todo=res.todo,
+        plan=res.data.get("plan"),
+        dry_run=ctx.dry_run and ctx.provider.external,
+    )
 
 
 def step_draft(ctx: Context, item_id: str) -> None:
@@ -239,24 +284,32 @@ def step_draft(ctx: Context, item_id: str) -> None:
     drafts.create(client, ctx.batch, item_id, ctx.cfg, ctx._sections, dry_run=ctx.dry_run)
 
 
-STEP_FUNCS = {"checks": step_checks, "images": step_images, "mockups": step_mockups, "copy": step_copy,
-              "prices": step_prices, "provider": step_provider, "draft": step_draft}
+STEP_FUNCS = {
+    "checks": step_checks,
+    "images": step_images,
+    "mockups": step_mockups,
+    "copy": step_copy,
+    "prices": step_prices,
+    "provider": step_provider,
+    "draft": step_draft,
+}
 
 
 def ready(batch: Batch, item_id: str, step: str) -> bool:
     it = batch.items[item_id]
     if it["status"] == "held" or batch.done(item_id, step):
         return False
-    return all(batch.done(item_id, s) for s in ORDER[:ORDER.index(step)])
+    return all(batch.done(item_id, s) for s in ORDER[: ORDER.index(step)])
 
 
 def run(ctx: Context, report_fn=None) -> dict:
     """Advance every item as far as it can go. Returns what happened and what is waiting."""
     t0 = ctx.batch.start_run()
-    if not ctx.dry_run:                  # a dry-run "draft" is only a payload: the real run must still create it
+    if not ctx.dry_run:  # dry-run drafts and provider plans sent nothing: the real run must still do them
         for it in ctx.batch.items.values():
-            if it["steps"].get("draft", {}).get("dry_run"):
-                del it["steps"]["draft"]
+            for step in ("draft", "provider"):
+                if it["steps"].get(step, {}).get("dry_run"):
+                    del it["steps"][step]
         ctx.batch.save()
     try:
         for step in ORDER:
@@ -279,7 +332,11 @@ def run(ctx: Context, report_fn=None) -> dict:
 
 def summary(ctx: Context) -> dict:
     items = ctx.batch.items
-    return {"batch": ctx.batch.id, "dir": str(ctx.batch.dir),
-            "drafted": [i for i, it in items.items() if it["steps"].get("draft", {}).get("status") == "done"],
-            "held": {i: it["held"]["reasons"] for i, it in items.items() if it["status"] == "held"},
-            "waiting": ctx.waiting, "errors": ctx.errors}
+    return {
+        "batch": ctx.batch.id,
+        "dir": str(ctx.batch.dir),
+        "drafted": [i for i, it in items.items() if it["steps"].get("draft", {}).get("status") == "done"],
+        "held": {i: it["held"]["reasons"] for i, it in items.items() if it["status"] == "held"},
+        "waiting": ctx.waiting,
+        "errors": ctx.errors,
+    }

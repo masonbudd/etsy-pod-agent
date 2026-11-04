@@ -1,18 +1,21 @@
 """Etsy client and drafts, against mocked responses shaped like the Open API v3 reference."""
+
 import base64
 import hashlib
 import json
+import os
+import stat
 import urllib.parse
 from datetime import datetime
 
 import pytest
+from conftest import etsy_client, good_copy, write_json
 from PIL import Image
 
-from conftest import etsy_client, good_copy, write_json
 from podagent import pricing
 from podagent.etsy import drafts, oauth
 from podagent.etsy.client import PublishBlocked
-from podagent.http import Recorder
+from podagent.http import HttpError, Recorder
 from podagent.state import Batch
 
 
@@ -26,7 +29,9 @@ def test_pkce_challenge_is_s256_of_verifier():
 
 
 def test_token_refreshes_only_when_expiring(token_file):
-    rec = Recorder().add("POST", "/oauth/token", body={"access_token": "access-2", "refresh_token": "refresh-2", "expires_in": 3600})
+    rec = Recorder().add(
+        "POST", "/oauth/token", body={"access_token": "access-2", "refresh_token": "refresh-2", "expires_in": 3600}
+    )
     fresh = oauth.TokenStore(token_file, "key", transport=rec, clock=lambda: 2000)
     assert fresh.access_token() == "access-1" and rec.calls == []
     stale = oauth.TokenStore(token_file, "key", transport=rec, clock=lambda: 1000 + 3600)
@@ -45,7 +50,7 @@ def test_client_refuses_to_change_listing_state(token_file):
 
 def test_create_is_never_retried_on_server_error(token_file):
     rec = Recorder().add("POST", "/shops/123/listings", 502, {"error": "bad gateway"})
-    with pytest.raises(Exception):
+    with pytest.raises(HttpError):
         etsy_client(token_file, rec).create_draft(123, {"title": "x"})
     assert len(rec.calls) == 1
 
@@ -71,13 +76,15 @@ def make_ready_item(tmp_path, cfg):
 
 
 def happy_routes():
-    return (Recorder()
-            .add("GET", "/shops/123/sections", body={"count": 0, "results": []})
-            .add("POST", "/shops/123/sections", body={"shop_section_id": 55, "title": "Abstract Prints"})
-            .add("POST", "/shops/123/listings", body={"listing_id": 999, "state": "draft"})
-            .add("POST", "/listings/999/images", body={"listing_image_id": 1})
-            .add("POST", "/listings/999/images", body={"listing_image_id": 2})
-            .add("PUT", "/listings/999/inventory", body={"products": []}))
+    return (
+        Recorder()
+        .add("GET", "/shops/123/sections", body={"count": 0, "results": []})
+        .add("POST", "/shops/123/sections", body={"shop_section_id": 55, "title": "Abstract Prints"})
+        .add("POST", "/shops/123/listings", body={"listing_id": 999, "state": "draft"})
+        .add("POST", "/listings/999/images", body={"listing_image_id": 1})
+        .add("POST", "/listings/999/images", body={"listing_image_id": 2})
+        .add("PUT", "/listings/999/inventory", body={"products": []})
+    )
 
 
 def test_draft_is_created_with_photos_and_inventory(tmp_path, cfg, token_file):
@@ -108,14 +115,22 @@ def test_rerun_makes_no_requests(tmp_path, cfg, token_file):
 
 def test_lost_draft_is_recovered_not_duplicated(tmp_path, cfg, token_file):
     b = make_ready_item(tmp_path, cfg)
-    b.mark("sun", "draft", "running", requested_at="2026-11-04T10:00:00+00:00")   # crashed after the POST
+    b.mark("sun", "draft", "running", requested_at="2026-11-04T10:00:00+00:00")  # crashed after the POST
     created = int(datetime.fromisoformat("2026-11-04T10:00:05+00:00").timestamp())
-    rec = (Recorder()
-           .add("GET", "/shops/123/listings?state=draft", body={"count": 1, "results": [
-               {"listing_id": 777, "title": good_copy()["title"], "created_timestamp": created}]})
-           .add("POST", "/listings/777/images", body={"listing_image_id": 1})
-           .add("POST", "/listings/777/images", body={"listing_image_id": 2})
-           .add("PUT", "/listings/777/inventory", body={}))
+    rec = (
+        Recorder()
+        .add(
+            "GET",
+            "/shops/123/listings?state=draft",
+            body={
+                "count": 1,
+                "results": [{"listing_id": 777, "title": good_copy()["title"], "created_timestamp": created}],
+            },
+        )
+        .add("POST", "/listings/777/images", body={"listing_image_id": 1})
+        .add("POST", "/listings/777/images", body={"listing_image_id": 2})
+        .add("PUT", "/listings/777/inventory", body={})
+    )
     out = drafts.create(etsy_client(token_file, rec), b, "sun", cfg, {})
     assert out["listing_id"] == 777 and out["recovered"]
     assert not any(c["method"] == "POST" and c["url"].endswith("/shops/123/listings") for c in rec.calls)
@@ -134,6 +149,64 @@ def test_disclosure_tasks_list_drafts_without_disclosure(tmp_path, cfg, token_fi
     b = make_ready_item(tmp_path, cfg)
     drafts.create(etsy_client(token_file, happy_routes()), b, "sun", cfg, {})
     tasks = drafts.write_disclosure_tasks(b, tmp_path / "tasks.md")
-    assert tasks[0]["listing_id"] == 999 and "Never click Publish" in (tmp_path / "tasks.md").read_text(encoding="utf-8")
+    assert tasks[0]["listing_id"] == 999 and "Never click Publish" in (tmp_path / "tasks.md").read_text(
+        encoding="utf-8"
+    )
     b.mark("sun", "disclosure")
     assert drafts.disclosure_tasks(b) == []
+
+
+@pytest.mark.parametrize(
+    "method, path, form",
+    [
+        ("PATCH", "/shops/123/listings/9?state=active", None),  # state in the query string
+        ("GET", "/shops/123/listings?state=active&limit=100&offset=0", None),
+        ("PATCH", "/shops/123/listings/9", {"title": "x"}),  # not a request this tool makes
+        ("POST", "/shops/123/listings", {"title": "x", "state": "active"}),
+        ("DELETE", "/listings/9", None),
+    ],
+)
+def test_guard_allows_only_known_requests_and_never_state(token_file, method, path, form):
+    rec = Recorder()
+    with pytest.raises(PublishBlocked):
+        etsy_client(token_file, rec).call(method, path, form=form)
+    assert rec.calls == []
+
+
+def test_guard_finds_state_nested_in_json(token_file):
+    rec = Recorder()
+    with pytest.raises(PublishBlocked):
+        etsy_client(token_file, rec).call("PUT", "/listings/9/inventory", json_body={"products": [{"state": "active"}]})
+    assert rec.calls == []
+
+
+def test_guard_lets_through_the_draft_listing_read(token_file):
+    rec = Recorder().add("GET", "/shops/123/listings?state=draft", body={"count": 0, "results": []})
+    assert etsy_client(token_file, rec).draft_listings(123) == []
+
+
+def test_lost_draft_is_found_when_etsy_escapes_the_title(tmp_path, cfg, token_file):
+    b = make_ready_item(tmp_path, cfg)
+    write_json(b.item_dir("sun") / "copy.json", {**good_copy(), "title": "Cats & Dogs | Owner's Print | Pet Wall Art"})
+    b.mark("sun", "draft", "running", requested_at="2026-11-04T10:00:00+00:00")
+    created = int(datetime.fromisoformat("2026-11-04T10:00:05+00:00").timestamp())
+    listed = {
+        "listing_id": 777,
+        "title": "Cats &amp; Dogs | Owner&#39;s Print | Pet Wall Art",
+        "created_timestamp": created,
+    }
+    rec = (
+        Recorder()
+        .add("GET", "/shops/123/listings?state=draft", body={"count": 1, "results": [listed]})
+        .add("POST", "/listings/777/images", body={"listing_image_id": 1})
+        .add("POST", "/listings/777/images", body={"listing_image_id": 2})
+        .add("PUT", "/listings/777/inventory", body={})
+    )
+    assert drafts.create(etsy_client(token_file, rec), b, "sun", cfg, {})["listing_id"] == 777
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX permission bits")
+def test_token_file_is_readable_by_its_owner_only(tmp_path):
+    store = oauth.TokenStore(tmp_path / ".secrets" / "etsy_token.json", "key", clock=lambda: 1)
+    store.save({"access_token": "a", "refresh_token": "r", "expires_in": 3600})
+    assert stat.S_IMODE(os.stat(store.path).st_mode) == 0o600

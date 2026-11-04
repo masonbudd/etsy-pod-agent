@@ -3,19 +3,20 @@
 Every step checks the state before doing work, so a rerun skips finished items, never
 creates a second Etsy draft and never pays to regenerate an image. Writes are atomic.
 """
+
 from __future__ import annotations
 
 import json
 import os
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 STEPS = ["checks", "images", "mockups", "copy", "prices", "provider", "draft", "disclosure"]
 
 
 def now() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+    return datetime.now(UTC).isoformat(timespec="seconds")
 
 
 class Batch:
@@ -29,18 +30,29 @@ class Batch:
         return self.dir / "state.json"
 
     @classmethod
-    def create(cls, folder: Path, batch_id: str, mode: str) -> "Batch":
+    def create(cls, folder: Path, batch_id: str, mode: str) -> Batch:
         folder = Path(folder)
         if (folder / "state.json").exists():
             raise FileExistsError(f"batch {batch_id} already exists")
         folder.mkdir(parents=True, exist_ok=True)
-        b = cls(folder, {"batch_id": batch_id, "mode": mode, "created": now(), "items": {}, "concepts": [],
-                         "costs": [], "events": [], "runs": []})
+        b = cls(
+            folder,
+            {
+                "batch_id": batch_id,
+                "mode": mode,
+                "created": now(),
+                "items": {},
+                "concepts": [],
+                "costs": [],
+                "events": [],
+                "runs": [],
+            },
+        )
         b.save()
         return b
 
     @classmethod
-    def load(cls, folder: Path) -> "Batch":
+    def load(cls, folder: Path) -> Batch:
         p = Path(folder) / "state.json"
         if not p.exists():
             raise FileNotFoundError(f"no batch at {folder}")
@@ -109,9 +121,11 @@ class Batch:
         self.save()
 
     # -- money, time, log --------------------------------------------------
-    def add_cost(self, kind: str, usd: float, item: str | None = None, note: str = "") -> None:
-        self.data["costs"].append({"kind": kind, "usd": usd, "item": item, "note": note, "at": now()})
+    def add_cost(self, kind: str, usd: float, item: str | None = None, note: str = "", **extra) -> dict:
+        entry = {"kind": kind, "usd": usd, "item": item, "note": note, "at": now(), **extra}
+        self.data["costs"].append(entry)
         self.save()
+        return entry
 
     def event(self, text: str) -> None:
         self.data["events"].append({"at": now(), "text": text})

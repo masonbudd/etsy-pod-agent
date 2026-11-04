@@ -1,16 +1,17 @@
 """Image generation and room templates against mocked OpenAI Images API responses."""
+
 import base64
 import io
 import json
 import shutil
 
 import pytest
+from conftest import SAMPLES, art, vision, write_json
 from PIL import Image
 
-from conftest import SAMPLES, art, vision, write_json
 from podagent import concepts, generate, pipeline, rooms_gen
-from podagent.images import samples
 from podagent.http import HttpError, Recorder
+from podagent.images import samples
 from podagent.providers.local_export import LocalExport
 
 API = "/v1/images/generations"
@@ -24,8 +25,15 @@ def png_bytes(img) -> bytes:
 
 def openai_ok(rec, img, n=1):
     for _ in range(n):
-        rec.add("POST", API, body={"created": 1, "data": [{"b64_json": base64.b64encode(png_bytes(img)).decode()}],
-                                   "usage": {"total_tokens": 1056}})
+        rec.add(
+            "POST",
+            API,
+            body={
+                "created": 1,
+                "data": [{"b64_json": base64.b64encode(png_bytes(img)).decode()}],
+                "usage": {"total_tokens": 1056},
+            },
+        )
     return rec
 
 
@@ -35,9 +43,22 @@ def client(rec, cfg):
 
 def gen_batch(ws, cfg, ids, approve=None, reject=()):
     b = pipeline.new_generate_batch(ws, cfg, count=len(ids))
-    write_json(b.dir / "concepts.json", {"concepts": [
-        {"id": i, "title": i.replace("-", " "), "target_keyword": "kw", "why": "w", "prompt": f"prompt for {i}",
-         **({"lettering": "HELLO"} if i == "lettered" else {})} for i in ids]})
+    write_json(
+        b.dir / "concepts.json",
+        {
+            "concepts": [
+                {
+                    "id": i,
+                    "title": i.replace("-", " "),
+                    "target_keyword": "kw",
+                    "why": "w",
+                    "prompt": f"prompt for {i}",
+                    **({"lettering": "HELLO"} if i == "lettered" else {}),
+                }
+                for i in ids
+            ]
+        },
+    )
     concepts.load_into_state(b, cfg, concepts.load_file(b))
     concepts.decide(b, approve=list(ids if approve is None else approve), reject=list(reject))
     return b
@@ -65,7 +86,7 @@ def test_rerun_never_pays_twice(ws, small_cfg):
 
 def test_lost_paid_request_needs_explicit_retry(ws, small_cfg):
     b = gen_batch(ws, small_cfg, ["a"])
-    b.data["concepts"][0]["requested_at"] = "2026-11-04T10:00:00+00:00"   # sent, then the run died
+    b.data["concepts"][0]["requested_at"] = "2026-11-04T10:00:00+00:00"  # sent, then the run died
     empty = Recorder()
     res = generate.run(b, small_cfg, client(empty, small_cfg), set())
     assert empty.calls == [] and "retry-unsaved" in res["skipped"][0]
@@ -113,9 +134,9 @@ def test_held_design_is_regenerated_once_with_the_fix(ws, small_cfg):
     out = generate.run(b, small_cfg, client(rec, small_cfg), set())
     assert out["regenerated"] == ["framed"] and "no border, margin" in json.loads(rec.calls[0]["body"])["prompt"]
     assert b.items["framed"]["status"] == "active" and (b.item_dir("framed") / "source_attempt1.png").exists()
-    assert not (b.item_dir("framed") / "vision.json").exists()                     # Claude reviews the new image
+    assert not (b.item_dir("framed") / "vision.json").exists()  # Claude reviews the new image
 
-    res = run_checks(ws, small_cfg, b, {"framed": vision(border_seen=True)})        # fails again
+    res = run_checks(ws, small_cfg, b, {"framed": vision(border_seen=True)})  # fails again
     assert "framed" in res["held"]
     again = Recorder()
     assert generate.run(b, small_cfg, client(again, small_cfg), set())["regenerated"] == [] and again.calls == []
@@ -161,8 +182,8 @@ def test_generated_rooms_are_calibrated_and_wait_for_approval(rooms_dir, cfg):
         rec.add("POST", API, body={"data": [{"b64_json": base64.b64encode(room).decode()}]})
     out = rooms_gen.generate(rooms_dir, cfg, client(rec, cfg), 2)
     assert out[0]["frame_found"] and out[0]["warnings"] == [] and out[0]["status"] == "pending"
-    assert any("asked for 3:4" in w for w in out[1]["warnings"])          # a 4:5 frame where 3:4 was wanted
-    assert rooms_gen.generate(rooms_dir, cfg, client(Recorder(), cfg), 2)[0]["name"] == out[0]["name"]   # no new spend
+    assert any("asked for 3:4" in w for w in out[1]["warnings"])  # a 4:5 frame where 3:4 was wanted
+    assert rooms_gen.generate(rooms_dir, cfg, client(Recorder(), cfg), 2)[0]["name"] == out[0]["name"]  # no new spend
 
     rooms_gen.approve(rooms_dir, out[0]["name"], "in a black frame in a calm living room")
     assert f'file = "{out[0]["file"]}"' in (rooms_dir / "rooms.toml").read_text(encoding="utf-8")
@@ -181,3 +202,115 @@ def test_a_room_without_a_frame_cannot_be_approved(rooms_dir, cfg):
     assert not rec_out["frame_found"]
     with pytest.raises(ValueError):
         rooms_gen.approve(rooms_dir, rec_out["name"], "alt")
+
+
+def held_for_border(ws, cfg):
+    """A generated design held at checks for a border, ready for one regeneration."""
+    b = gen_batch(ws, cfg, ["framed"])
+    generate.run(b, cfg, client(openai_ok(Recorder(), art(border=60)), cfg), set())
+    assert "framed" in run_checks(ws, cfg, b, {"framed": vision()})["held"]
+    return b
+
+
+def crash(*args, **kwargs):
+    raise RuntimeError("power cut")
+
+
+def test_regeneration_is_recorded_before_it_is_sent(ws, small_cfg):
+    b = held_for_border(ws, small_cfg)
+    seen = []
+
+    class Watching(generate.ImageClient):
+        def generate(self, prompt):
+            seen.append((b.items["framed"].get("regen_requested_at"), [c["status"] for c in b.data["costs"]]))
+            return png_bytes(art(seed=2)), {}
+
+    generate.run(b, small_cfg, Watching("k", small_cfg), set())
+    requested_at, statuses = seen[0]
+    assert requested_at and statuses[-1] == "requested"
+    assert [c["status"] for c in b.data["costs"]] == ["saved", "saved"]
+
+
+def test_regeneration_counts_against_the_batch_budget(ws, small_cfg):
+    small_cfg["images"]["max_batch_usd"] = 0.05  # room for one image only
+    b = held_for_border(ws, small_cfg)
+    empty = Recorder()
+    res = generate.run(b, small_cfg, client(empty, small_cfg), set())
+    assert empty.calls == [] and "budget" in res["skipped"][0]
+
+
+def test_crash_before_a_regenerated_image_lands_never_pays_twice(ws, small_cfg, monkeypatch):
+    b = held_for_border(ws, small_cfg)
+    monkeypatch.setattr(generate, "_write", crash)
+    with pytest.raises(RuntimeError):
+        generate.run(b, small_cfg, client(openai_ok(Recorder(), art(seed=2)), small_cfg), set())
+    monkeypatch.undo()
+    assert generate._spent(b) == pytest.approx(0.082)  # the lost request still counts
+    empty = Recorder()
+    res = generate.run(b, small_cfg, client(empty, small_cfg), set())
+    assert empty.calls == [] and "retry-unsaved" in res["skipped"][0]
+
+
+def test_regenerated_image_that_landed_before_a_crash_is_adopted_for_free(ws, small_cfg, monkeypatch):
+    b = held_for_border(ws, small_cfg)
+    monkeypatch.setattr(generate, "_adopt_regenerated", crash)
+    with pytest.raises(RuntimeError):
+        generate.run(b, small_cfg, client(openai_ok(Recorder(), art(seed=2)), small_cfg), set())
+    monkeypatch.undo()
+    empty = Recorder()
+    res = generate.run(b, small_cfg, client(empty, small_cfg), set())
+    assert empty.calls == [] and res["regenerated"] == ["framed"]
+    assert b.items["framed"]["status"] == "active" and b.items["framed"]["regenerations"] == 1
+    assert [c["status"] for c in b.data["costs"]] == ["saved", "saved"]
+
+
+def test_first_image_that_landed_before_a_crash_is_adopted_for_free(ws, small_cfg, monkeypatch):
+    b = gen_batch(ws, small_cfg, ["a"])
+    monkeypatch.setattr(generate, "_adopt_new", crash)
+    with pytest.raises(RuntimeError):
+        generate.run(b, small_cfg, client(openai_ok(Recorder(), art()), small_cfg), set())
+    monkeypatch.undo()
+    empty = Recorder()
+    res = generate.run(b, small_cfg, client(empty, small_cfg), set())
+    assert empty.calls == [] and res["generated"] == ["a"] and list(b.items) == ["a"]
+
+
+def moderation_block(rec):
+    return rec.add("POST", API, 400, {"error": {"code": "moderation_blocked", "message": "Your request was rejected."}})
+
+
+def test_refused_concept_is_held_with_the_reason_and_the_run_carries_on(ws, small_cfg):
+    b = gen_batch(ws, small_cfg, ["a", "b"])
+    rec = openai_ok(moderation_block(Recorder()), art(seed=1))
+    res = generate.run(b, small_cfg, client(rec, small_cfg), set())
+    assert res["generated"] == ["b"] and res["refused"] == ["a: moderation_blocked: Your request was rejected."]
+    a = next(c for c in b.data["concepts"] if c["id"] == "a")
+    assert a["refused"].startswith("moderation_blocked") and "requested_at" not in a
+    assert [(c["item"], c["usd"], c["status"]) for c in b.data["costs"]] == [
+        ("a", 0.0, "refused"),
+        ("b", 0.041, "saved"),
+    ]
+    empty = Recorder()
+    assert generate.run(b, small_cfg, client(empty, small_cfg), set())["skipped"] == [] and empty.calls == []
+    concepts.decide(b, edits={"a": "a gentler prompt"})
+    assert "refused" not in next(c for c in b.data["concepts"] if c["id"] == "a")
+
+
+def test_refused_regeneration_keeps_the_design_held(ws, small_cfg):
+    b = held_for_border(ws, small_cfg)
+    res = generate.run(b, small_cfg, client(moderation_block(Recorder()), small_cfg), set())
+    it = b.items["framed"]
+    assert res["refused"] and it["status"] == "held" and "refused the regeneration" in it["held"]["reasons"][-1]
+    empty = Recorder()
+    generate.run(b, small_cfg, client(empty, small_cfg), set())
+    assert empty.calls == []
+
+
+def test_rate_limit_is_not_treated_as_paid(ws, small_cfg):
+    b = gen_batch(ws, small_cfg, ["a"])
+    rec = Recorder()
+    for _ in range(4):
+        rec.add("POST", API, 429, {"error": {"message": "Rate limit reached"}})
+    res = generate.run(b, small_cfg, client(rec, small_cfg), set())
+    assert "rate limited" in res["skipped"][0] and generate._spent(b) == 0
+    assert "requested_at" not in b.data["concepts"][0]

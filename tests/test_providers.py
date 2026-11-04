@@ -1,4 +1,5 @@
 """Provider adapters. Prodigi responses follow its v5 OpenAPI reference."""
+
 import csv
 import json
 
@@ -31,8 +32,13 @@ def test_local_export_groups_files_and_writes_sku_sheet(cfg, ctx):
     assert res.status == "needs_action" and (out / "iso" / "art-sun.jpg").exists()
     rows = list(csv.DictReader(open(out / "sku_sheet.csv", encoding="utf-8")))
     assert len(rows) == len(cfg["sizes"]) * 4
-    assert {r["sku"] for r in rows if r["size"].startswith("A4")} == {"art-sun-a4-p", "art-sun-a4-b", "art-sun-a4-w", "art-sun-a4-o"}
-    providers.get(cfg, {}, name="local_export").prepare(ctx)              # rerun replaces, never duplicates rows
+    assert {r["sku"] for r in rows if r["size"].startswith("A4")} == {
+        "art-sun-a4-p",
+        "art-sun-a4-b",
+        "art-sun-a4-w",
+        "art-sun-a4-o",
+    }
+    providers.get(cfg, {}, name="local_export").prepare(ctx)  # rerun replaces, never duplicates rows
     assert len(list(csv.DictReader(open(out / "sku_sheet.csv", encoding="utf-8")))) == len(rows)
 
 
@@ -57,14 +63,22 @@ def test_browser_adapter_writes_tasks(cfg, ctx, tmp_path):
 def prodigi_cfg(cfg):
     p = cfg["provider"]["prodigi"]
     p["sales_channel_id"] = "ch1"
-    p["catalogue"] = {s["code"]: [f"GLOBAL-FAP-{s['code'].upper()}", f"GLOBAL-CFPM-{s['code'].upper()}"] for s in cfg["sizes"]}
+    p["catalogue"] = {
+        s["code"]: [f"GLOBAL-FAP-{s['code'].upper()}", f"GLOBAL-CFPM-{s['code'].upper()}"] for s in cfg["sizes"]
+    }
     return cfg
 
 
 def upload_routes(rec, n):
     for i in range(n):
-        rec.add("POST", "/v5/assets", body={"data": None, "uploadUrl": f"https://api.prodigi.com/v5/assets/uploads/t{i}"})
-        rec.add("PUT", f"/assets/uploads/t{i}", body={"data": {"id": f"a{i}", "url": f"https://files.example.com/a{i}.jpg", "status": "ready"}})
+        rec.add(
+            "POST", "/v5/assets", body={"data": None, "uploadUrl": f"https://api.prodigi.com/v5/assets/uploads/t{i}"}
+        )
+        rec.add(
+            "PUT",
+            f"/assets/uploads/t{i}",
+            body={"data": {"id": f"a{i}", "url": f"https://files.example.com/a{i}.jpg", "status": "ready"}},
+        )
     return rec
 
 
@@ -74,7 +88,9 @@ def test_prodigi_uploads_files_once_and_plans_mappings(cfg, ctx):
     prov = providers.get(cfg, {"PRINT_PROVIDER_API_KEY": "sandbox_abc"}, transport=rec, name="prodigi")
     prov.sleep = lambda s: None
     res = prov.prepare(ctx)
-    assert res.status == "needs_action" and all(c["headers"]["X-API-Key"] == "sandbox_abc" for c in rec.calls)
+    assert res.status == "needs_action" and all(
+        c["headers"]["X-API-Key"] == "sandbox_abc" for c in rec.calls
+    )  # all on api.prodigi.com
     plan = res.data["plan"]
     assert len(plan) == pricing.summary(pricing.price_table(cfg))["enabled"]
     framed = next(r for r in plan if r["sku"] == "art-sun-16x20-b")
@@ -94,18 +110,38 @@ def test_prodigi_reports_sizes_without_a_sku(cfg, ctx):
 
 def test_prodigi_link_matches_synced_variants_by_sku(cfg, ctx):
     cfg = prodigi_cfg(cfg)
-    plan = [{"sku": "art-sun-a4-b", "catalogueVariantId": "GLOBAL-CFPM-A4", "attributes": {"framecolour": "black"}},
-            {"sku": "art-sun-a4-p", "catalogueVariantId": "GLOBAL-FAP-A4", "attributes": {}}]
+    plan = [
+        {"sku": "art-sun-a4-b", "catalogueVariantId": "GLOBAL-CFPM-A4", "attributes": {"framecolour": "black"}},
+        {"sku": "art-sun-a4-p", "catalogueVariantId": "GLOBAL-FAP-A4", "attributes": {}},
+    ]
     ctx.listing_id = 999
-    rec = (Recorder()
-           .add("GET", "/sales-channels/ch1/products", body={"data": [{"externalId": "999", "variants": [
-               {"externalId": "v1", "sku": "art-sun-a4-b"}, {"externalId": "v2", "sku": "art-sun-a4-p"}]}], "limit": 100})
-           .add("GET", "/sales-channels/ch1/products", body={"data": []})
-           .add("GET", "/sales-channels/ch1/mappings", body={"data": [{"externalVariantId": "v2"}], "limit": 100})
-           .add("GET", "/sales-channels/ch1/mappings", body={"data": []})
-           .add("POST", "/sales-channels/ch1/mappings", 201, {"data": {"id": "m1"}})
-           .add("GET", "/sales-channels/ch1/rules", body={"data": [{"id": "r1", "storeProductId": "999", "enabled": False}]})
-           .add("PATCH", "/sales-channels/ch1/rules/r1", body={"data": {"id": "r1", "enabled": True}}))
+    rec = (
+        Recorder()
+        .add(
+            "GET",
+            "/sales-channels/ch1/products",
+            body={
+                "data": [
+                    {
+                        "externalId": "999",
+                        "variants": [
+                            {"externalId": "v1", "sku": "art-sun-a4-b"},
+                            {"externalId": "v2", "sku": "art-sun-a4-p"},
+                        ],
+                    }
+                ],
+                "limit": 100,
+            },
+        )
+        .add("GET", "/sales-channels/ch1/products", body={"data": []})
+        .add("GET", "/sales-channels/ch1/mappings", body={"data": [{"externalVariantId": "v2"}], "limit": 100})
+        .add("GET", "/sales-channels/ch1/mappings", body={"data": []})
+        .add("POST", "/sales-channels/ch1/mappings", 201, {"data": {"id": "m1"}})
+        .add(
+            "GET", "/sales-channels/ch1/rules", body={"data": [{"id": "r1", "storeProductId": "999", "enabled": False}]}
+        )
+        .add("PATCH", "/sales-channels/ch1/rules/r1", body={"data": {"id": "r1", "enabled": True}})
+    )
     prov = providers.get(cfg, {"PRINT_PROVIDER_API_KEY": "live_abc"}, transport=rec, name="prodigi")
     res = prov.link(ctx, plan)
     posts = [c for c in rec.calls if c["method"] == "POST"]
@@ -121,3 +157,28 @@ def test_prodigi_link_waits_for_the_sync(cfg, ctx):
     rec = Recorder().add("GET", "/sales-channels/ch1/products", body={"data": []})
     res = providers.get(cfg, {"PRINT_PROVIDER_API_KEY": "live_abc"}, transport=rec, name="prodigi").link(ctx, [])
     assert res.status == "needs_action" and "not synced" in res.detail
+
+
+def test_prodigi_key_is_never_sent_to_another_host(cfg, ctx):
+    cfg = prodigi_cfg(cfg)
+    rec = Recorder()
+    for i in range(len(ctx.print_files)):
+        rec.add("POST", "/v5/assets", body={"data": None, "uploadUrl": f"https://uploads.example.com/t{i}"})
+        rec.add(
+            "PUT", f"uploads.example.com/t{i}", body={"data": {"id": f"a{i}", "url": "https://files.example.com/x"}}
+        )
+    prov = providers.get(cfg, {"PRINT_PROVIDER_API_KEY": "live_secret"}, transport=rec, name="prodigi")
+    prov.prepare(ctx)
+    puts = [c for c in rec.calls if c["method"] == "PUT"]
+    assert puts and all("X-API-Key" not in c["headers"] for c in puts)
+    assert all(c["headers"]["X-API-Key"] == "live_secret" for c in rec.calls if c["method"] == "POST")
+
+
+def test_prodigi_dry_run_sends_nothing(cfg, ctx):
+    cfg = prodigi_cfg(cfg)
+    ctx.dry_run = True
+    rec = Recorder()
+    res = providers.get(cfg, {"PRINT_PROVIDER_API_KEY": "sandbox_abc"}, transport=rec, name="prodigi").prepare(ctx)
+    assert rec.calls == [] and res.status == "needs_action" and res.detail.startswith("dry run")
+    assert len(res.data["plan"]) == pricing.summary(pricing.price_table(cfg))["enabled"]
+    assert not (ctx.batch_dir / "provider_export" / "prodigi_assets.json").exists()

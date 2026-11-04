@@ -1,9 +1,10 @@
 """The whole pipeline in dry-run mode: waiting for Claude, resuming, holding, and the demo."""
+
 import json
 
 import pytest
-
 from conftest import art, good_copy, vision, write_json
+
 from podagent import demo, pipeline, report, review_page
 from podagent.images import upscale
 from podagent.providers.local_export import LocalExport
@@ -61,6 +62,7 @@ def test_rerun_skips_finished_work(ws, small_cfg, monkeypatch):
 
     def boom(*a, **k):
         raise AssertionError("upscaled twice")
+
     monkeypatch.setattr(upscale, "upscale", boom)
     res = pipeline.run(ctx)
     assert res["errors"] == {} and json.dumps(b.items, sort_keys=True) == before
@@ -77,11 +79,21 @@ def test_real_run_after_a_dry_run_still_creates_the_draft(ws, small_cfg):
     calls = []
 
     class FakeEtsy:
-        def sections(self, shop): return []
-        def create_section(self, shop, title): return {"shop_section_id": 5}
-        def create_draft(self, shop, fields): calls.append(fields); return {"listing_id": 42, "state": "draft"}
-        def upload_image(self, *a): return {"listing_image_id": len(calls)}
-        def update_inventory(self, *a): return {}
+        def sections(self, shop):
+            return []
+
+        def create_section(self, shop, title):
+            return {"shop_section_id": 5}
+
+        def create_draft(self, shop, fields):
+            calls.append(fields)
+            return {"listing_id": 42, "state": "draft"}
+
+        def upload_image(self, *a):
+            return {"listing_image_id": len(calls)}
+
+        def update_inventory(self, *a):
+            return {}
 
     live = pipeline.Context(ws, small_cfg, {}, b, dry_run=False, provider=ctx.provider, etsy=FakeEtsy())
     res = pipeline.run(live)
@@ -104,7 +116,9 @@ def test_invalid_copy_goes_back_then_is_held_after_three_tries(ws, small_cfg):
 def test_held_designs_stay_in_their_batch_and_never_draft(ws, small_cfg):
     b, ctx = start(ws, small_cfg, n=2)
     item0, item1 = list(b.items)
-    write_json(b.item_dir(item0) / "vision.json", vision(spelling_ok=False, lettering="GOOD MORNIG", spelling_notes="MORNIG"))
+    write_json(
+        b.item_dir(item0) / "vision.json", vision(spelling_ok=False, lettering="GOOD MORNIG", spelling_notes="MORNIG")
+    )
     write_json(b.item_dir(item1) / "vision.json", vision())
     feed(b, "copy.json", good_copy())
     res = pipeline.run(ctx)
@@ -130,6 +144,7 @@ def test_one_failing_item_does_not_stop_the_batch(ws, small_cfg, monkeypatch):
         if first in str(src):
             raise RuntimeError("GPU out of memory")
         return real(src, dst, *a, **k)
+
     monkeypatch.setattr(upscale, "upscale", flaky)
     res = pipeline.run(ctx)
     assert f"{first} at images" in res["errors"] and len(res["drafted"]) == 1
@@ -157,9 +172,72 @@ def test_demo_runs_both_modes_end_to_end(tmp_path):
     assert rep["passed_checks"] == 2 and rep["dry_run_drafts"] == 2
     assert (tmp_path / "demo/inbox/batches/demo/provider_export/sku_sheet.csv").exists()
 
-    assert gen["generated"] == ["sun-over-hills", "good-morning"] and sorted(gen["drafted"]) == ["good-morning", "sun-over-hills"]
+    assert gen["generated"] == ["sun-over-hills", "good-morning"] and sorted(gen["drafted"]) == [
+        "good-morning",
+        "sun-over-hills",
+    ]
     assert gen["research_dropped"] == ["mickey mouse poster"] and gen["errors"] == {}
     grep = json.loads((tmp_path / "demo/generate/batches/demo-generate/report.json").read_text())
-    assert grep["concepts"] == {"proposed": 3, "approved": 2, "edited": 1, "rejected": 1, "approved_estimate_usd": 0.082}
+    assert grep["concepts"] == {
+        "proposed": 3,
+        "approved": 2,
+        "edited": 1,
+        "rejected": 1,
+        "approved_estimate_usd": 0.082,
+    }
     assert grep["api_cost_usd"]["total"] == 0
     assert "Gate 1" in (tmp_path / "demo/generate/batches/demo-generate/review.html").read_text(encoding="utf-8")
+
+
+class FakeEtsy:
+    """Stands in for the Etsy client in a real (non-dry) run."""
+
+    def __init__(self):
+        self.created = []
+
+    def sections(self, shop):
+        return []
+
+    def create_section(self, shop, title):
+        return {"shop_section_id": 5}
+
+    def create_draft(self, shop, fields):
+        self.created.append(fields)
+        return {"listing_id": 42, "state": "draft"}
+
+    def upload_image(self, *a):
+        return {"listing_image_id": 1}
+
+    def update_inventory(self, *a):
+        return {}
+
+
+def test_dry_run_does_not_upload_to_an_external_provider(ws, small_cfg):
+    from podagent.http import Recorder
+    from podagent.providers.prodigi import Prodigi
+
+    small_cfg["provider"]["prodigi"].update(
+        sales_channel_id="ch1", catalogue={s["code"]: [f"P-{s['code']}", f"F-{s['code']}"] for s in small_cfg["sizes"]}
+    )
+    b, _ = start(ws, small_cfg, n=1)
+    feed(b, "vision.json", vision())
+    feed(b, "copy.json", good_copy())
+    quiet = Recorder()
+    prodigi = Prodigi(small_cfg, {"PRINT_PROVIDER_API_KEY": "sandbox_abc"}, transport=quiet, sleep=lambda s: None)
+    pipeline.run(pipeline.Context(ws, small_cfg, {}, b, dry_run=True, provider=prodigi))
+    item = next(iter(b.items))
+    assert quiet.calls == [] and b.step(item, "provider")["dry_run"]
+
+    uploads = Recorder()
+    for i in range(3):  # one print file per ratio in small_cfg
+        uploads.add(
+            "POST", "/v5/assets", body={"data": None, "uploadUrl": f"https://api.prodigi.com/v5/assets/uploads/t{i}"}
+        )
+        uploads.add(
+            "PUT", f"/assets/uploads/t{i}", body={"data": {"id": f"a{i}", "url": "https://files.example.com/x"}}
+        )
+    prodigi.transport = uploads
+    etsy = FakeEtsy()
+    res = pipeline.run(pipeline.Context(ws, small_cfg, {}, b, dry_run=False, provider=prodigi, etsy=etsy))
+    assert res["errors"] == {} and len([c for c in uploads.calls if c["method"] == "PUT"]) == 3
+    assert not b.step(item, "provider").get("dry_run") and len(etsy.created) == 1
