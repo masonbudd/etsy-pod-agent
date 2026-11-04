@@ -46,8 +46,8 @@ def test_print_only_sizes_disable_framed_options(cfg):
 
 def test_cost_estimate_from_config(cfg):
     e = costs.estimate(cfg, 5)
-    assert e["known"] and e["per_image_usd"] == 0.063
-    assert e["expected_usd"] == pytest.approx(0.315) and e["worst_case_usd"] == pytest.approx(0.63)
+    assert e["known"] and e["per_image_usd"] == 0.041 and e["model"] == "gpt-image-2"
+    assert e["expected_usd"] == pytest.approx(0.205) and e["worst_case_usd"] == pytest.approx(0.41)
 
 
 def test_cost_estimate_unknown_model_says_so(cfg):
