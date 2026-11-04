@@ -1,0 +1,176 @@
+# etsy-pod-agent
+
+Claude Code skills and a Python pipeline that turn print-on-demand wall-art designs into
+checked Etsy **draft** listings, with room mockups, listing copy, prices, print files and a
+review page. A person approves at two points, and the shop owner always clicks Publish.
+
+## The problem
+
+Listing one print-on-demand design on Etsy properly takes a lot of small steps. You check
+the art for spelling mistakes, borders and IP problems. You upscale it and crop it for every
+print size. You make room mockups and write a title, description and 13 tags within Etsy's
+limits. You price every size and frame and set up the files at the print provider. Done by
+hand, that adds up to most of an hour per design. Fully automated, mistakes go live. This
+project automates the steps, keeps a person at the two points that matter, and holds
+anything that fails a check, with the reason.
+
+![Review page for a batch: two drafts with mockups, tags, prices and check results, and one held design](docs/review-page.png)
+
+## How it works
+
+```mermaid
+flowchart TD
+    A["Research: selling themes and buyer phrases"] --> B["Claude proposes design concepts<br/>with keyword, reason and cost estimate"]
+    B --> G1{"Gate 1: you approve,<br/>edit or reject each concept"}
+    G1 -->|approved| C["Generate images (OpenAI image API)"]
+    IN["Your own designs<br/>in designs/inbox/"] --> D
+    C --> D["Quality checks<br/>code + Claude's visual review"]
+    D -->|fails| H["Held in the batch,<br/>with reason and suggested fix"]
+    D -->|passes| E["Upscale, print files, room mockups"]
+    E --> F["Listing copy, validated against Etsy limits"]
+    F --> P["Prices from cost, fees and margin"]
+    P --> PR["Print provider adapter"]
+    PR --> ET["Etsy DRAFT listings"]
+    ET --> R["Review page and run report"]
+    R --> G2{"Gate 2: you check each draft<br/>and click Publish in Etsy"}
+```
+
+The top path (research, concepts, Gate 1, generation) is phase 2 and is not built yet.
+Everything from your own designs onwards works today.
+
+**Division of labour.** Python does everything with a right answer: Etsy limits, prices,
+image measurements, state, API calls. Claude does the judgement inside the skill: reading
+each image for spelling and IP, and writing copy. Claude's output is JSON that code
+validates; invalid copy goes back to Claude, and after three failures the item is held.
+
+**Resumable.** Each batch has a `state.json`. Every step skips finished work, so
+`podagent run <batch>` is safe to repeat after a crash or a fix. A rerun never creates a
+second Etsy draft: the listing ID is saved the moment Etsy returns it. If a run dies between
+Etsy's reply and the save, the next run finds the draft by title instead of making another.
+
+## What you need to connect
+
+| | Needed for | Required? |
+|---|---|---|
+| Claude Code | running the skills | Yes |
+| Python 3.11+ | the pipeline | Yes |
+| Etsy developer app (OAuth with PKCE) | creating drafts | Yes, except for dry runs and the demo |
+| Print provider | fulfilling orders | Yes for selling. `local_export` works with any provider; `prodigi` uses its API ([docs/providers.md](docs/providers.md)) |
+| Claude in Chrome extension | ticking Etsy's AI-disclosure box; the browser adapter | Yes for live drafts |
+| Real-ESRGAN (`realesrgan-ncnn-vulkan`) | sharper upscaling | Optional; falls back to a plain resize |
+| OpenAI API key | generating designs and rooms | Phase 2 only |
+| Research source (ProfitTree MCP or a keyword CSV) | finding themes | Phase 2 only |
+
+`/setup-shop` walks through each one and `podagent doctor` reports what is missing.
+
+## Quick start
+
+```bash
+git clone https://github.com/masonbudd/etsy-pod-agent.git
+cd etsy-pod-agent
+pip install -e .
+```
+
+Then, in Claude Code, from the repo folder:
+
+1. `/setup-shop`: creates `config.toml` and `.env`, connects Etsy and your print provider, checks every tool.
+2. Put your designs (portrait PNG or JPEG) in `designs/inbox/`.
+3. `/create-listings 5`: checks, mockups, copy, prices, provider files, Etsy drafts and a review page.
+
+**Run your first batch as a dry run** (`podagent run <batch> --dry-run`) and read the Etsy
+payload it writes. Then run it for real, open each draft in Etsy, and check it before you publish.
+
+## Demo mode
+
+No accounts, no network, about 15 seconds:
+
+```bash
+podagent demo
+```
+
+It runs the pipeline on three bundled sample designs and writes
+`demo_output/batches/demo/review.html`. Two designs become dry-run drafts; one is held
+because it has a painted border. All code steps run for real: checks, upscaling, print
+files, room calibration, mockups, copy validation, pricing, the print-file export, the
+exact Etsy API payload, the review page and the report. The two judgement steps replay
+outputs Claude wrote for these samples (`samples/recorded/`). The sample designs and rooms
+are drawn in code (`scripts/make_samples.py`).
+
+## How approval works, and why
+
+- **Gate 1 (phase 2): concepts before images.** Claude proposes concepts, each with its
+  target keyword, why it should sell, the prompt and the estimated cost. Nothing is
+  generated until you approve, edit or reject each one. This is where taste and spend are decided.
+- **Gate 2: drafts, never live listings.** The pipeline creates Etsy drafts and a review
+  page. Publishing is your click in Etsy. The Etsy client refuses any request that would
+  change a listing's state, so the code can't publish even by mistake.
+- **Holds instead of guesses.** A design that fails any check (spelling, border, resolution
+  at every size, banned or IP terms, near-duplicates, visible defects) is held inside its
+  batch with the reason and a suggested fix. It never becomes a draft.
+- **Irreversible browser clicks need a yes.** In the browser steps, Claude asks before any
+  click that creates, saves or submits something at the provider.
+
+Etsy's API has no field for its AI-disclosure question, so that tick is a browser step. The
+description also always carries an AI-disclosure line from your config.
+
+## Costs
+
+- **Etsy:** drafts are free. Etsy charges its listing fee when you publish. Transaction and
+  payment-processing fees are built into the prices (`[pricing.fees]` in config).
+- **Print provider:** you pay per order. Base costs in config drive the prices.
+- **Image generation (phase 2):** priced per image from `[images.price_usd]`. Claude shows
+  the estimate before Gate 1 and the run report shows the spend.
+- **Real-ESRGAN:** free, runs locally.
+- **Claude:** your Claude Code plan. The run report doesn't include it.
+
+## Testing
+
+The pipeline is covered by the demo and by pytest with mocked API responses for Etsy and
+Prodigi, built from their API references. It has not been run against live Etsy or provider
+accounts from this repository. GitHub Actions runs a secret scan, the tests and the demo on
+every push (Ubuntu and Windows, Python 3.11 and 3.13).
+
+```bash
+pip install -e ".[dev]"
+pytest
+```
+
+The tests cover Etsy's title, tag, SKU and section limits, pricing and margins, cost
+estimates, state and resume (no duplicate drafts, no repeated work), the checks, room
+calibration, the Etsy and Prodigi request payloads, and the secret scanner.
+
+## Limitations
+
+- Portrait designs only.
+- Not run live from this repository. Start with a dry run and check your first drafts in Etsy.
+- Etsy attributes used for search filters (colour, room, subject) are not set.
+- EU product-safety (GPSR) fields are not set.
+- One currency per shop. VAT or sales tax on your own prices is not modelled.
+- Prodigi only sees a listing after you publish it, so `podagent provider-link` runs after
+  publishing. Its API reference doesn't say how artwork attaches to a mapped variant: check
+  one in Prodigi's dashboard before your first sale.
+- Without Real-ESRGAN, large prints come from a plain resize and look softer.
+- The sample rooms are flat illustrations. Swap in your own room photos (`rooms/rooms.toml`, then `podagent rooms-calibrate`).
+
+## Results
+
+Generalised from the author's production workflow, which put over 300 prints live and cut
+listing time from nearly an hour to a few minutes. This repository is a rewrite of that
+workflow for any shop; its code did not produce those numbers.
+
+## Project layout
+
+```
+.claude/skills/        setup-shop and create-listings skills
+src/podagent/          pipeline: checks, images, Etsy, providers, review page, report
+samples/               sample designs, rooms and recorded Claude outputs for the demo
+scripts/               secret scan, sample drawing
+tests/                 pytest suite
+docs/                  providers, browser adapter, screenshot
+```
+
+Contributors: enable the secret-scan hook with `git config core.hooksPath .githooks`.
+
+## License
+
+MIT
