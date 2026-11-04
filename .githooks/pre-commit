@@ -1,0 +1,6 @@
+#!/bin/sh
+# Blocks the commit if staged files contain secrets or personal data.
+# Enable once per clone: git config core.hooksPath .githooks
+PY=python
+command -v "$PY" >/dev/null 2>&1 || PY=python3
+exec "$PY" scripts/scan_secrets.py --staged

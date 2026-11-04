@@ -1,0 +1,20 @@
+# Secrets and local settings: never commit these
+.env
+.secrets/
+/config.toml
+.scan-denylist
+
+# Your working data
+/designs/
+/batches/
+/rooms/
+/demo_output/
+*.log
+
+# Python
+__pycache__/
+*.egg-info/
+.pytest_cache/
+.venv/
+build/
+dist/

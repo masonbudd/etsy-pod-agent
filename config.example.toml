@@ -1,0 +1,208 @@
+# etsy-pod-agent settings.
+# `podagent init` copies this file to config.toml. Edit config.toml, not this file.
+# Money is in your Etsy shop's currency. The example costs are placeholders:
+# replace them with your print provider's price list (including shipping if you offer free delivery).
+
+[shop]
+currency = "GBP"
+spelling = "British"                 # "British" or "American"; used in the copy brief
+
+[naming]
+sku_prefix = "art"                   # base SKU: art-sun-over-hills
+batch_id = "{date}-{seq:02d}"        # batches/2026-11-04-01; {date} is YYYY-MM-DD, {seq} counts up per day
+
+[batch]
+default_count = 5
+max_count = 20
+
+[paths]
+inbox = "designs/inbox"              # drop your own designs here
+batches = "batches"                  # one folder per run
+rooms = "rooms"                      # room templates for mockups (init copies the samples here)
+existing_designs = "designs/existing"  # optional: designs already on sale, for the duplicate check
+
+[checks]
+min_dpi = 150                        # needed at every size you sell
+border_min_pct = 1.0                 # a straight-edged band this thick (% of the side) on 3+ sides is a border
+duplicate_distance = 10              # perceptual-hash difference (0-64); lower is stricter
+max_crop_pct = 15                    # warn when a size's crop cuts more than this % of the design
+banned_terms = [                     # brands, characters, celebrities, living artists: extend for your niche
+  "disney", "pixar", "marvel", "star wars", "harry potter", "pokemon", "nintendo", "mickey mouse",
+  "hello kitty", "snoopy", "studio ghibli", "totoro", "lego", "barbie", "coca-cola", "nike",
+  "gucci", "chanel", "louis vuitton", "nfl", "nba", "premier league", "banksy", "keith haring",
+  "andy warhol", "frida kahlo", "taylor swift", "the beatles",
+]
+
+[upscale]
+engine = "auto"                      # "auto" uses Real-ESRGAN when found, else a plain resize
+factor = 4
+model = "realesrgan-x4plus"
+tile = 256                           # lower this if Real-ESRGAN runs out of GPU memory
+
+[listing]
+voice = "Warm, plain and specific. Short sentences. Describe what is in the picture and where it suits. No hype."
+title_style = "Buyer search phrases separated by ' | '. Strongest phrase first, then 3-5 more real phrases."
+title_separator = " | "
+title_min = 90                       # warn below this; Etsy's hard limit is 140
+avoid_words = ["digital", "download", "printable", "instant"]   # this tool sells physical prints
+sections = ["Abstract Prints", "Landscape Prints", "Kitchen Prints", "Typography Prints"]
+taxonomy_id = 1027                   # Etsy category ID for wall decor at the time of writing; check yours in Etsy's taxonomy
+who_made = "i_did"
+when_made = "made_to_order"
+materials = ["Matte paper"]
+max_photos = 10
+paper = "premium matte paper"
+delivery = "Made to order and usually dispatched within 2-5 working days"
+ai_disclosure = "This design was made with AI image tools and prepared for print by the shop."
+description_template = """{hook}
+
+THE PRINT
+- Printed to order on {paper}
+- Sizes: {sizes}
+- Options: {frames}
+- Room photos are digital mockups to show style and scale
+
+DELIVERY
+- {delivery}
+
+GOOD TO KNOW
+- Colours can vary slightly between screens
+- {ai_disclosure}"""
+
+[variations]
+size_property = "Size"
+frame_property = "Frame"
+variant_skus = true                  # each size and frame gets its own SKU (base-size-frame) for SKU-matching providers
+frames = [
+  {name = "Print only", code = "p", framed = false},
+  {name = "Black frame", code = "b", framed = true},
+  {name = "White frame", code = "w", framed = true},
+  {name = "Oak frame", code = "o", framed = true},
+]
+
+[pricing]
+target_margin = 0.30                 # profit as a share of the price, after costs and fees
+min_margin = 0.20                    # flag anything below this
+rounding = "charm"                   # "charm" (x.99), "whole" or "none"
+
+[pricing.fees]                       # Etsy's fees change: check your seller fee page
+transaction_pct = 0.065
+payment_pct = 0.04
+payment_fixed = 0.20
+listing_fee = 0.16                   # USD 0.20 per listing, in your currency
+offsite_ads_pct = 0.0                # 0.15 or 0.12 if you want to cover Offsite Ads
+vat_on_fees_pct = 0.20               # VAT charged on Etsy fees (UK and EU sellers); 0 elsewhere
+
+# Sizes you sell. Portrait orientation. ratio is "w:h" or "ISO" for A sizes.
+# cost_* is what your provider charges you, delivered. Leave cost_framed out for print-only sizes.
+# Set price_print / price_framed to fix a price; otherwise it is calculated from target_margin.
+# Etsy does not allow brackets in option names.
+[[sizes]]
+name = "5x7 in / 13x18 cm"
+code = "5x7"
+ratio = "5:7"
+width_in = 5
+height_in = 7
+cost_print = 6.50
+cost_framed = 20.00
+price_print = 9.99                   # entry price below target margin: it will be flagged
+
+[[sizes]]
+name = "8x10 in / 20x25 cm"
+code = "8x10"
+ratio = "4:5"
+width_in = 8
+height_in = 10
+cost_print = 7.50
+cost_framed = 24.00
+
+[[sizes]]
+name = "A4 / 21x30 cm"
+code = "a4"
+ratio = "ISO"
+width_in = 8.27
+height_in = 11.69
+cost_print = 7.50
+cost_framed = 25.00
+
+[[sizes]]
+name = "A3 / 30x42 cm"
+code = "a3"
+ratio = "ISO"
+width_in = 11.69
+height_in = 16.54
+cost_print = 9.50
+cost_framed = 32.00
+
+[[sizes]]
+name = "12x16 in / 30x40 cm"
+code = "12x16"
+ratio = "3:4"
+width_in = 12
+height_in = 16
+cost_print = 10.00
+cost_framed = 34.00
+
+[[sizes]]
+name = "16x20 in / 40x50 cm"
+code = "16x20"
+ratio = "4:5"
+width_in = 16
+height_in = 20
+cost_print = 12.50
+cost_framed = 42.00
+
+[[sizes]]
+name = "A2 / 42x59 cm"
+code = "a2"
+ratio = "ISO"
+width_in = 16.54
+height_in = 23.39
+cost_print = 13.00
+cost_framed = 45.00
+
+[[sizes]]
+name = "18x24 in / 45x60 cm"
+code = "18x24"
+ratio = "3:4"
+width_in = 18
+height_in = 24
+cost_print = 14.00
+cost_framed = 50.00
+
+[[sizes]]
+name = "24x36 in / 61x91 cm"
+code = "24x36"
+ratio = "2:3"
+width_in = 24
+height_in = 36
+cost_print = 22.00
+
+[provider]
+adapter = "local_export"             # "local_export", "browser" or "prodigi"
+browser_playbook = ""                # for "browser": path to your provider's playbook (see docs/browser-adapter.md)
+
+[provider.prodigi]                   # see docs/providers.md
+sales_channel_id = ""                # your Etsy shop's connection in Prodigi's dashboard
+frame_attribute = "framecolour"
+frame_colours = {b = "black", w = "white", o = "natural"}   # frame code -> Prodigi frame colour
+
+[provider.prodigi.catalogue]         # size code = [unframed SKU, framed SKU]. Look up each in Prodigi's catalogue.
+"16x20" = ["GLOBAL-FAP-16X20", "GLOBAL-CFPM-16X20"]          # example from Prodigi's API reference
+
+[etsy]                               # `podagent etsy-discover` fills these in
+shop_id = 0
+shipping_profile_id = 0
+return_policy_id = 0
+readiness_state_id = 0
+production_partner_id = 0
+
+[images]                             # phase 2: generated designs and room templates
+model = "gpt-image-1"
+size = "1024x1536"
+quality = "medium"
+
+[images.price_usd]                   # per image, "model:quality:size". Check OpenAI's current pricing.
+"gpt-image-1:low:1024x1536" = 0.016
+"gpt-image-1:medium:1024x1536" = 0.063
+"gpt-image-1:high:1024x1536" = 0.25
