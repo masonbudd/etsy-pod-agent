@@ -30,7 +30,7 @@ def test_plain_background_with_a_motif_is_not_a_border():
 
 
 def test_sample_designs_border_results():
-    assert checks.border(Image.open(SAMPLES / "designs/mid-century-arches.png"), 1.0)["found"]
+    assert checks.border(Image.open(SAMPLES / "designs/kingfisher-moon.png"), 1.0)["found"]
     assert not checks.border(Image.open(SAMPLES / "designs/sun-over-hills.png"), 1.0)["found"]
     assert not checks.border(Image.open(SAMPLES / "designs/good-morning.png"), 1.0)["found"]
 

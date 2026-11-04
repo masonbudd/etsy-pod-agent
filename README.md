@@ -97,7 +97,7 @@ podagent demo
 It runs both modes, each in its own sample workspace:
 
 - **Inbox** (`demo_output/inbox/batches/demo/review.html`): three sample designs. Two become
-  dry-run drafts; one is held because it has a painted border.
+  dry-run drafts; one is held because it has a cream margin around the art.
 - **Generate** (`demo_output/generate/batches/demo-generate/`): sample keyword research
   (one banned phrase is dropped), three concepts, and a Gate 1 page (`concepts.html`) with
   cost estimates. Sample decisions approve one concept, edit and approve another, and reject

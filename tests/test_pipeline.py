@@ -152,7 +152,7 @@ def test_demo_runs_both_modes_end_to_end(tmp_path):
     res = demo.run(tmp_path / "demo")
     inbox, gen = res["demo"], res["demo-generate"]
     assert sorted(inbox["drafted"]) == ["good-morning", "sun-over-hills"]
-    assert list(inbox["held"]) == ["mid-century-arches"] and inbox["errors"] == {}
+    assert list(inbox["held"]) == ["kingfisher-moon"] and inbox["errors"] == {}
     rep = json.loads((tmp_path / "demo/inbox/batches/demo/report.json").read_text())
     assert rep["passed_checks"] == 2 and rep["dry_run_drafts"] == 2
     assert (tmp_path / "demo/inbox/batches/demo/provider_export/sku_sheet.csv").exists()

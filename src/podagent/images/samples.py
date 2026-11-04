@@ -1,6 +1,7 @@
-"""Draw the bundled sample designs in code, plus simple test rooms with a known frame position.
+"""Draw two of the bundled sample designs in code, plus simple test rooms with a known frame position.
 
-Run `python scripts/make_samples.py` to redraw the designs. Output is deterministic.
+Run `python scripts/make_samples.py` to redraw them. Output is deterministic. The third sample,
+kingfisher-moon.png, is a painted design with a margin added by `add_margin`.
 The drawn rooms are test fixtures for calibration; the demo's sample rooms are images in samples/rooms.
 """
 from __future__ import annotations
@@ -75,23 +76,18 @@ def good_morning() -> Image.Image:
     return img
 
 
-def arches_with_border() -> Image.Image:
-    """Mid-century arches with a cream margin painted in: the sample the checks should hold."""
-    W, H = DESIGN_SIZE
-    img = Image.new("RGB", DESIGN_SIZE, (236, 228, 214))
-    d = ImageDraw.Draw(img)
-    m = 64
-    d.rectangle([m, m, W - m, H - m], fill=(40, 92, 98))
-    cx, cy = W // 2, H - m - 120
-    for r, col in zip((400, 330, 260, 190, 120), ((200, 100, 70), (230, 175, 70), (232, 170, 150), (150, 170, 130), (40, 92, 98))):
-        d.pieslice([cx - r, cy - r, cx + r, cy + r], 180, 360, fill=col)
-    d.rectangle([m, cy, W - m, H - m], fill=(200, 100, 70))
-    d.ellipse([cx - 90, 330, cx + 90, 510], fill=(236, 200, 120))
-    return img
+MARGIN_CREAM = (250, 246, 236)
 
 
-DESIGNS = {"sun-over-hills.png": sun_over_hills, "good-morning.png": good_morning,
-           "mid-century-arches.png": arches_with_border}
+def add_margin(img: Image.Image, px: int = 64, colour=MARGIN_CREAM) -> Image.Image:
+    """Surround a design with a flat cream margin, the kind image models paint in by mistake.
+    samples/designs/kingfisher-moon.png was made this way, so the demo has a design the border check holds."""
+    out = Image.new("RGB", (img.width + 2 * px, img.height + 2 * px), colour)
+    out.paste(img.convert("RGB"), (px, px))
+    return out
+
+
+DESIGNS = {"sun-over-hills.png": sun_over_hills, "good-morning.png": good_morning}
 
 
 # -- rooms -----------------------------------------------------------------
