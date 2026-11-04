@@ -212,6 +212,16 @@ def calibrate_rooms(rooms_dir: Path) -> dict:
     return out
 
 
+def overlay_sheet(rooms_dir: Path) -> Path:
+    """Redraw calibration_check.jpg from the saved corners.json, without recalibrating."""
+    cal = json.loads((rooms_dir / "corners.json").read_text(encoding="utf-8"))
+    tiles = [_overlay(Image.open(rooms_dir / r["file"]).convert("RGB"), np.array(cal[r["file"]]["corners"]), r["file"])
+             for r in load_room_list(rooms_dir)]
+    out = rooms_dir / "calibration_check.jpg"
+    _sheet(tiles).save(out, quality=85)
+    return out
+
+
 def _overlay(img: Image.Image, q: np.ndarray, label: str) -> Image.Image:
     ov = img.copy()
     d = ImageDraw.Draw(ov)

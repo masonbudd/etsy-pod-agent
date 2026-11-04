@@ -1,10 +1,12 @@
+import json
+
 import numpy as np
 import pytest
 from PIL import Image, ImageDraw
 
 from conftest import SAMPLES, art, vision
 from podagent import checks
-from podagent.images import calibrate, crops, mockups
+from podagent.images import calibrate, crops, mockups, samples
 
 
 def noisy(img, sd=4):
@@ -93,12 +95,24 @@ def test_crop_ratio_and_groups(cfg):
     assert groups["iso"]["sizes"] == ["a4", "a3", "a2"]
 
 
-def test_calibration_finds_the_sample_frames():
-    expected = {"living-room.jpg": (540, 340, 1060, 990), "sideboard.jpg": (404, 640, 854, 1240), "bedroom.jpg": (580, 380, 1020, 1040)}
-    for name, (x0, y0, x1, y1) in expected.items():
-        q = calibrate.detect_frame(Image.open(SAMPLES / "rooms" / name))
+def test_calibration_finds_frames_in_drawn_rooms():
+    for name, (draw, (x0, y0, x1, y1)) in samples.TEST_ROOMS.items():
+        q = calibrate.detect_frame(draw())
         want = np.array([[x0, y0], [x1, y0], [x1, y1], [x0, y1]], float)
         assert np.abs(q - want).max() < 4, name
+
+
+def test_calibration_reproduces_the_sample_rooms_saved_corners():
+    saved = json.loads((SAMPLES / "rooms" / "corners.json").read_text())
+    for name, rec in saved.items():
+        q = calibrate.detect_frame(Image.open(SAMPLES / "rooms" / name).convert("RGB"))
+        assert np.abs(q - np.array(rec["corners"])).max() < 3, name
+
+
+def test_sample_rooms_carry_no_metadata():
+    for f in (SAMPLES / "rooms").glob("*.jpg"):
+        im = Image.open(f)
+        assert set(im.info) <= {"jfif", "jfif_density", "jfif_unit", "jfif_version", "dpi"} and len(im.getexif()) == 0, f.name
 
 
 def test_calibration_handles_a_frame_seen_at_an_angle():

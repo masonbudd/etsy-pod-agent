@@ -20,7 +20,6 @@ from pathlib import Path
 from podagent import concepts, generate, pipeline, report, research, review_page
 from podagent.config import EXAMPLE_CONFIG, REPO, Workspace, validate
 from podagent.http import Response
-from podagent.images import calibrate
 from podagent.providers.local_export import LocalExport
 
 SAMPLES = REPO / "samples"
@@ -54,10 +53,7 @@ def _workspace(out: Path) -> tuple[Workspace, dict]:
         raise ValueError("example config is invalid: " + "; ".join(problems))
     cfg["upscale"]["engine"] = "resize"            # same result on every machine, no GPU needed
     ws = Workspace(out)
-    shutil.copytree(SAMPLES / "rooms", ws.path(cfg, "rooms"))
-    for f in ("corners.json", "calibration_check.jpg"):
-        (ws.path(cfg, "rooms") / f).unlink(missing_ok=True)
-    calibrate.calibrate_rooms(ws.path(cfg, "rooms"))  # recalibrate to show it working
+    shutil.copytree(SAMPLES / "rooms", ws.path(cfg, "rooms"))  # sample rooms ship with their calibration
     return ws, cfg
 
 

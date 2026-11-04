@@ -1,4 +1,4 @@
-"""Redraw the bundled sample designs and rooms, then calibrate the rooms.
+"""Redraw the bundled sample designs, and rebuild the sample rooms' calibration overlay.
 
 Usage: python scripts/make_samples.py
 """
@@ -9,6 +9,5 @@ from podagent.images import calibrate, samples
 ROOT = Path(__file__).resolve().parents[1]
 
 if __name__ == "__main__":
-    samples.write_all(ROOT / "samples/designs", ROOT / "samples/rooms")
-    for name, r in calibrate.calibrate_rooms(ROOT / "samples/rooms").items():
-        print(name, r["ratio_measured"], r["corners"], *r["warnings"])
+    samples.write_designs(ROOT / "samples/designs")
+    print(calibrate.overlay_sheet(ROOT / "samples/rooms"))

@@ -9,6 +9,7 @@ from PIL import Image
 
 from conftest import SAMPLES, art, vision, write_json
 from podagent import concepts, generate, pipeline, rooms_gen
+from podagent.images import samples
 from podagent.http import HttpError, Recorder
 from podagent.providers.local_export import LocalExport
 
@@ -154,7 +155,7 @@ def test_room_plan_cycles_scenes_frames_and_ratios(cfg):
 
 
 def test_generated_rooms_are_calibrated_and_wait_for_approval(rooms_dir, cfg):
-    room = png_bytes(Image.open(SAMPLES / "rooms" / "living-room.jpg"))
+    room = png_bytes(samples.living_room())
     rec = Recorder()
     for _ in range(2):
         rec.add("POST", API, body={"data": [{"b64_json": base64.b64encode(room).decode()}]})

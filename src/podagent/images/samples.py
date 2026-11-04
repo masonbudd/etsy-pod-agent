@@ -1,6 +1,7 @@
-"""Draw the bundled sample designs and room templates in code, so the repo ships no third-party images.
+"""Draw the bundled sample designs in code, plus simple test rooms with a known frame position.
 
-Run `python scripts/make_samples.py` to redraw them. Output is deterministic.
+Run `python scripts/make_samples.py` to redraw the designs. Output is deterministic.
+The drawn rooms are test fixtures for calibration; the demo's sample rooms are images in samples/rooms.
 """
 from __future__ import annotations
 
@@ -171,33 +172,12 @@ def bedroom() -> Image.Image:
     return _grain(img, 2, 13)
 
 
-ROOMS = {"living-room.jpg": living_room, "sideboard.jpg": sideboard, "bedroom.jpg": bedroom}
-ROOMS_TOML = """# Room templates for mockups, in photo order: the first room is the listing's main photo.
-# To use your own rooms, add images with an empty frame filled with plain light grey,
-# list them here with the frame's ratio, then run `podagent rooms-calibrate`.
-
-[[room]]
-file = "living-room.jpg"
-alt = "in a black frame above a rust sofa in a sage green living room"
-ratio = "4:5"
-
-[[room]]
-file = "sideboard.jpg"
-alt = "in an oak frame leaning on a walnut sideboard beside a vase of leaves"
-ratio = "3:4"
-
-[[room]]
-file = "bedroom.jpg"
-alt = "in a white frame above a bed with linen bedding"
-ratio = "2:3"
-"""
+# drawn test rooms and the panel each one's frame holds (x0, y0, x1, y1)
+TEST_ROOMS = {"living-room": (living_room, (540, 340, 1060, 990)), "sideboard": (sideboard, (404, 640, 854, 1240)),
+              "bedroom": (bedroom, (580, 380, 1020, 1040))}
 
 
-def write_all(designs_dir: Path, rooms_dir: Path) -> None:
+def write_designs(designs_dir: Path) -> None:
     designs_dir.mkdir(parents=True, exist_ok=True)
-    rooms_dir.mkdir(parents=True, exist_ok=True)
     for name, draw in DESIGNS.items():
         draw().save(designs_dir / name, optimize=True)
-    for name, draw in ROOMS.items():
-        draw().save(rooms_dir / name, quality=90)
-    (rooms_dir / "rooms.toml").write_text(ROOMS_TOML, encoding="utf-8")
