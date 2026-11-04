@@ -64,15 +64,23 @@ Etsy's reply and the save, the next run finds the draft by title instead of maki
 | OpenAI API key | generating designs and room templates | Generate mode only |
 | Research source (ProfitTree MCP, or a keyword CSV from any tool) | finding themes and buyer phrases | Generate mode only |
 
-`/setup-shop` walks through each one and `podagent doctor` reports what is missing.
+`/setup-shop` walks through each one. `podagent doctor` reports what is missing; optional tools
+show as `--` and don't count as failures.
+
+Etsy reviews new developer apps before their keys work, so create your app early.
 
 ## Quick start
 
 ```bash
 git clone https://github.com/masonbudd/etsy-pod-agent.git
 cd etsy-pod-agent
+python -m venv .venv
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
 pip install -e .
 ```
+
+Install it editable (`-e`), as above. podagent reads the example config, sample rooms and
+demo files from this folder, so a plain `pip install .` isn't enough.
 
 Then, in Claude Code, from the repo folder:
 
@@ -83,8 +91,12 @@ Then, in Claude Code, from the repo folder:
    Generate mode stops after proposing concepts and waits for your decision on each.
 3. You get checks, mockups, copy, prices, provider files, Etsy drafts and a review page.
 
-**Run your first batch as a dry run** (`podagent run <batch> --dry-run`) and read the Etsy
-payload it writes. Then run it for real, open each draft in Etsy, and check it before you publish.
+**Run your first batch as a dry run** (`podagent run <batch> --dry-run`). It sends nothing to
+Etsy or your print provider and writes the exact Etsy payload for you to read. Then run it for
+real, open each draft in Etsy, and check it before you publish.
+
+`podagent status <batch>` shows where every design in a batch is, step by step, with the
+reason for anything held.
 
 ## Demo mode
 
@@ -109,9 +121,10 @@ All code steps run for real: research ranking, concept validation and costing, t
 record, checks, upscaling, print files, mockups, copy validation, pricing, the print-file
 export, the exact Etsy API payload, the review page and the report. The judgement steps
 (concepts, visual review, copy) replay outputs Claude wrote for these samples
-(`samples/recorded/`). The sample keyword numbers are invented. The sample designs are drawn
-in code (`scripts/make_samples.py`). The three sample rooms ship with their frame
-calibration; the tests check the calibrator finds the same corners.
+(`samples/recorded/`). The sample keyword numbers are invented. Two sample designs are drawn
+in code (`scripts/make_samples.py`); the third is a painted kingfisher with a cream margin
+added in code (`samples.add_margin`), so the border check has something to hold. The three
+sample rooms ship with their frame calibration; the tests check the calibrator finds the same corners.
 
 ## How approval works, and why
 
@@ -123,13 +136,19 @@ calibration; the tests check the calibrator finds the same corners.
   The code generates approved concepts only, and an approval is cleared if the prompt
   changes afterwards.
 - **Gate 2: drafts, never live listings.** The pipeline creates Etsy drafts and a review
-  page. Publishing is your click in Etsy. The Etsy client refuses any request that would
-  change a listing's state, so the code can't publish even by mistake.
+  page. Publishing is your click in Etsy. The Etsy client sends only the requests on its
+  allow-list (read shop settings, list drafts, create a draft, upload photos, set inventory)
+  and refuses `state` anywhere in a request, so the code can't publish even by mistake.
 - **Holds instead of guesses.** A design that fails any check (spelling, border, resolution
   at every size, banned or IP terms, near-duplicates, visible defects) is held inside its
   batch with the reason and a suggested fix. It never becomes a draft.
 - **Irreversible browser clicks need a yes.** In the browser steps, Claude asks before any
   click that creates, saves or submits something at the provider.
+- **Claude Code asks too.** `.claude/settings.json` has ask rules for `podagent decide`,
+  `generate`, `rooms-generate` and `rooms-regenerate`, run as `podagent ...` or
+  `python -m podagent ...`. Claude Code stops for your yes before it records a Gate 1
+  decision or spends money. If you turn permission prompts off, the code's own gates still
+  hold: only approved concepts are generated, within the batch budget.
 
 Etsy's API has no field for its AI-disclosure question, so that tick is a browser step. The
 description also always carries an AI-disclosure line from your config.
@@ -144,7 +163,9 @@ description also always carries an AI-disclosure line from your config.
   case with one retry. Generation stops before a batch passes `images.max_batch_usd`. A
   request is recorded before it is sent and the image is saved the moment it arrives, so a
   rerun never pays twice. A held design is regenerated at most once, with the fix added to
-  the prompt. The run report shows the spend.
+  the prompt, and the regeneration counts against the same budget. A request the API
+  refuses (for example a moderation block) is recorded at $0 with the reason; that concept is
+  held and the rest carry on. The run report shows the spend.
 - **Room templates:** `podagent rooms-generate` prints the cost and spends nothing until you
   add `--confirm`.
 - **Real-ESRGAN:** free, runs locally.
@@ -154,8 +175,9 @@ description also always carries an AI-disclosure line from your config.
 
 The pipeline is covered by the demo and by pytest with mocked API responses for Etsy,
 Prodigi and the OpenAI Images API, built from their API references. It has not been run
-against live Etsy, provider or OpenAI accounts from this repository. GitHub Actions runs a secret scan, the tests and the demo on
-every push (Ubuntu and Windows, Python 3.11 and 3.13).
+against live Etsy, provider or OpenAI accounts from this repository. GitHub Actions runs a
+format and lint check (ruff), a secret scan, the tests and the demo on every push (Ubuntu
+and Windows, Python 3.11 and 3.13).
 
 ```bash
 pip install -e ".[dev]"
@@ -181,12 +203,14 @@ payloads, and the secret scanner.
 - Research from the ProfitTree MCP happens inside Claude Code: Claude saves the results and
   the pipeline reads them. Without it, research comes from a keyword CSV you export from any tool.
 - Image costs are estimates from your config, not OpenAI's bill.
+- Options you don't offer (such as a frame on a print-only size) are sent to Etsy disabled,
+  with quantity 0. Check how they look on your first live draft.
 - Generated room templates vary. Calibration rejects ones without a clear grey frame, but
   check each by eye before approving.
 - Swap the sample rooms for your own: generate them in `/setup-shop`, or add room
   photos (`rooms/rooms.toml`, then `podagent rooms-calibrate`).
 
-## Results
+## Background
 
 Generalised from the author's production workflow, which put over 300 prints live and cut listing time from nearly an hour to a few minutes.
 

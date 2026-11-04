@@ -9,6 +9,7 @@ Two batches in one workspace:
 Every code step runs for real. The judgement steps replay outputs Claude wrote for these
 samples (samples/recorded/). The Etsy step is a dry run: it writes the exact API payload.
 """
+
 from __future__ import annotations
 
 import base64
@@ -18,6 +19,7 @@ import tomllib
 from pathlib import Path
 
 from podagent import concepts, generate, pipeline, report, research, review_page
+from podagent import config as C
 from podagent.config import EXAMPLE_CONFIG, REPO, Workspace, validate
 from podagent.http import Response
 from podagent.providers.local_export import LocalExport
@@ -28,6 +30,7 @@ MARKER = ".podagent-demo"
 
 def run(out: Path, mode: str = "both") -> dict:
     """Each mode gets its own workspace (out/inbox, out/generate), as two separate shops would."""
+    C.repo_file("samples/designs"), C.repo_file("config.example.toml")
     out = Path(out).resolve()
     if out.exists():
         if not (out / MARKER).exists():
@@ -51,7 +54,7 @@ def _workspace(out: Path) -> tuple[Workspace, dict]:
     problems = validate(cfg)
     if problems:
         raise ValueError("example config is invalid: " + "; ".join(problems))
-    cfg["upscale"]["engine"] = "resize"            # same result on every machine, no GPU needed
+    cfg["upscale"]["engine"] = "resize"  # same result on every machine, no GPU needed
     ws = Workspace(out)
     shutil.copytree(SAMPLES / "rooms", ws.path(cfg, "rooms"))  # sample rooms ship with their calibration
     return ws, cfg
@@ -91,18 +94,25 @@ def _generate(ws: Workspace, cfg: dict) -> dict:
     concepts.load_into_state(batch, cfg, data)
     concepts.write_gate_page(batch, cfg, warnings)
 
-    d = json.loads((rec / "decisions.json").read_text(encoding="utf-8"))           # Gate 1
+    d = json.loads((rec / "decisions.json").read_text(encoding="utf-8"))  # Gate 1
     concepts.decide(batch, approve=d["approve"], edits=d["edit"])
     concepts.decide(batch, reject=d["reject"], note=d["reject_note"])
     concepts.write_gate_page(batch, cfg, warnings)
 
     images = [SAMPLES / "designs" / f"{c['id']}.png" for c in batch.data["concepts"] if c["decision"] == "approved"]
     client = generate.ImageClient("demo", cfg, transport=Replay(images))
-    gen = generate.run(batch, cfg, client, pipeline.taken_skus(ws.path(cfg, "batches")),
-                       cost_note=f"demo replay, not charged (live estimate ${concepts.summary(batch)['approved_estimate_usd']:.3f} for the batch)")
+    estimate = concepts.summary(batch)["approved_estimate_usd"]
+    gen = generate.run(
+        batch,
+        cfg,
+        client,
+        pipeline.taken_skus(ws.path(cfg, "batches")),
+        cost_note=f"demo replay, not charged (live estimate ${estimate:.3f} for the batch)",
+    )
     result = _finish(pipeline.Context(ws, cfg, {}, batch, dry_run=True, provider=LocalExport(cfg, {})))
-    result.update(generated=gen["generated"], gate_page=str(batch.dir / "concepts.html"),
-                  research_dropped=found["dropped_banned"])
+    result.update(
+        generated=gen["generated"], gate_page=str(batch.dir / "concepts.html"), research_dropped=found["dropped_banned"]
+    )
     return result
 
 
@@ -116,8 +126,12 @@ class Replay:
     def __call__(self, method, url, headers, body):
         self.requests.append(json.loads(body))
         png = self.files.pop(0).read_bytes()
-        return Response(200, json.dumps({"created": 0, "data": [{"b64_json": base64.b64encode(png).decode()}],
-                                         "usage": {"total_tokens": 0}}).encode())
+        return Response(
+            200,
+            json.dumps(
+                {"created": 0, "data": [{"b64_json": base64.b64encode(png).decode()}], "usage": {"total_tokens": 0}}
+            ).encode(),
+        )
 
 
 def replay(batch, name: str) -> None:

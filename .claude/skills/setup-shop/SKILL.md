@@ -15,8 +15,10 @@ Goal: a valid `config.toml` and every connection checked, so `/create-listings` 
 
 ## Steps
 
-**1. Install and create the files.**
+**1. Install and create the files.** Use a virtual environment and an editable install: podagent reads the example config and samples from the repo folder.
 ```
+python -m venv .venv
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
 pip install -e .
 podagent init
 ```

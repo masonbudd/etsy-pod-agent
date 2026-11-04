@@ -38,7 +38,9 @@ Aim for N concepts that are clearly different from each other. Write prompts for
 - Record exactly what they said: `podagent decide <batch> --approve id1 id2 --reject id3 --edit id4 "new prompt" --note "their reason"`.
 - If you change a prompt yourself after approval, the approval is cleared and you must ask again.
 
-**G5. Generate:** `podagent generate <batch>`. It generates approved concepts only and stops at `images.max_batch_usd`. If it reports a request that was paid for but not saved, tell the user before using `--retry-unsaved`.
+**G5. Generate:** `podagent generate <batch>`. It generates approved concepts only and stops at `images.max_batch_usd`. Claude Code asks the user before this command runs (`.claude/settings.json`).
+- If it reports a request that was paid for but not saved, tell the user before using `--retry-unsaved`.
+- If the image API refused a concept (for example a moderation block), tell the user the reason. Offer an edited prompt; it only runs if they approve it (`podagent decide <batch> --edit id "new prompt"`).
 
 Then continue with the shared steps below.
 

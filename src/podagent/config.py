@@ -1,4 +1,5 @@
 """Load and validate config.toml, and find the workspace folders."""
+
 from __future__ import annotations
 
 import os
@@ -7,8 +8,20 @@ import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parents[2]          # the cloned repo (samples, config.example.toml)
+REPO = Path(__file__).resolve().parents[2]  # the cloned repo (samples, config.example.toml)
 EXAMPLE_CONFIG = REPO / "config.example.toml"
+NOT_A_CLONE = (
+    "{path} not found. podagent runs from a clone of the repository, installed with "
+    "`pip install -e .`; a plain `pip install .` copies only the Python package."
+)
+
+
+def repo_file(rel: str) -> Path:
+    """A file that ships with the repository (example config, samples), or a clear error."""
+    p = REPO / rel
+    if not p.exists():
+        raise FileNotFoundError(NOT_A_CLONE.format(path=rel))
+    return p
 
 
 class ConfigError(ValueError):
@@ -18,6 +31,7 @@ class ConfigError(ValueError):
 @dataclass
 class Workspace:
     """A user's working folder: config.toml, .env, designs, batches and rooms live here."""
+
     root: Path
 
     @property
@@ -49,13 +63,14 @@ def load(path: Path) -> dict:
 def parse_ratio(text: str) -> float:
     """Width / height. "ISO" is the A-series ratio 1:sqrt(2)."""
     if str(text).upper() == "ISO":
-        return 1 / 2 ** 0.5
+        return 1 / 2**0.5
     w, _, h = str(text).partition(":")
     return float(w) / float(h)
 
 
 def validate(cfg: dict) -> list[str]:
     from podagent import pricing, rules
+
     out = []
     for section in ("naming", "paths", "checks", "listing", "variations", "pricing", "provider", "etsy"):
         if section not in cfg:

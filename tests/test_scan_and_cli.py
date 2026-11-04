@@ -25,7 +25,7 @@ def test_scanner_finds_keys_tokens_and_emails(tmp_path, monkeypatch):
     hits = scan_text(tmp_path, monkeypatch, "x.py", f'key = "{fake_key}"\nemail me at {email}\n')
     kinds = " ".join(hits)
     assert "OpenAI key" in kinds and "email address" in kinds
-    assert fake_key not in kinds                                  # findings are masked
+    assert fake_key not in kinds  # findings are masked
 
 
 def test_scanner_allows_safe_emails_and_placeholders(tmp_path, monkeypatch):
@@ -75,10 +75,11 @@ def test_cli_generate_mode_waits_at_gate1(tmp_path, capsys):
     cli.main(root + ["init"])
     assert cli.main(root + ["new", "--generate", "--count", "2"]) == 0
     batch = next((tmp_path / "batches").iterdir()).name
-    assert cli.main(root + ["concepts", batch]) == 2                       # no concepts.json yet
+    assert cli.main(root + ["concepts", batch]) == 2  # no concepts.json yet
     (tmp_path / "batches" / batch / "concepts.json").write_text(
-        '{"concepts": [{"id": "a", "title": "A", "target_keyword": "k", "why": "w", "prompt": "p"}]}', encoding="utf-8")
-    assert cli.main(root + ["concepts", batch]) == 2                       # waiting for a decision
+        '{"concepts": [{"id": "a", "title": "A", "target_keyword": "k", "why": "w", "prompt": "p"}]}', encoding="utf-8"
+    )
+    assert cli.main(root + ["concepts", batch]) == 2  # waiting for a decision
     assert cli.main(root + ["decide", batch, "--approve", "a"]) == 0
     assert cli.main(root + ["concepts", batch]) == 0
     assert "approved" in capsys.readouterr().out
@@ -90,3 +91,45 @@ def test_cli_rooms_generate_shows_cost_and_spends_nothing_without_confirm(tmp_pa
     assert cli.main(root + ["rooms-generate", "--count", "2"]) == 0
     out = capsys.readouterr().out
     assert "Nothing generated" in out and '"expected_usd": 0.082' in out
+
+
+def test_cli_prints_a_short_message_for_api_errors(tmp_path, capsys, monkeypatch):
+    from podagent.http import HttpError
+
+    def fails(args):
+        raise HttpError("GET", "https://openapi.etsy.com/v3/application/users/me", 401, '{"error": "invalid_token"}')
+
+    monkeypatch.setattr(cli, "cmd_doctor", fails)
+    assert cli.main(["--root", str(tmp_path), "doctor"]) == 1
+    err = capsys.readouterr().err
+    assert err.strip() == "error: openapi.etsy.com returned HTTP 401: invalid_token" and "Traceback" not in err
+
+
+def test_doctor_treats_missing_optional_tools_as_fine(tmp_path):
+    from podagent import doctor
+    from podagent.config import Workspace, load
+    from podagent.providers.base import Check
+
+    cli.main(["--root", str(tmp_path), "init"])
+    checks = {c.name: c for c in doctor.run(Workspace(tmp_path), load(tmp_path / "config.toml"), {})}
+    assert checks["OpenAI API key"].optional and checks["Real-ESRGAN"].optional
+    assert doctor.passed([Check("a", True, ""), Check("b", False, "", optional=True)])
+    assert not doctor.passed([Check("a", False, "")])
+    assert "--  b" in doctor.format_table([Check("b", False, "", optional=True)])
+
+
+def test_missing_repo_files_explain_the_editable_install():
+    import pytest
+
+    from podagent.config import repo_file
+
+    with pytest.raises(FileNotFoundError, match=r"pip install -e \."):
+        repo_file("no/such/file")
+
+
+def test_claude_code_asks_before_gate1_decisions_and_spend():
+    import json
+
+    rules = json.loads((REPO / ".claude" / "settings.json").read_text())["permissions"]["ask"]
+    for cmd in ("decide", "generate", "rooms-generate", "rooms-regenerate"):
+        assert f"Bash(podagent {cmd} *)" in rules and f"Bash(python -m podagent {cmd} *)" in rules

@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "ask": [
+      "Bash(podagent decide *)",
+      "Bash(podagent generate *)",
+      "Bash(podagent rooms-generate *)",
+      "Bash(podagent rooms-regenerate *)",
+      "Bash(podagent rooms-generate)",
+      "Bash(python -m podagent decide *)",
+      "Bash(python -m podagent generate *)",
+      "Bash(python -m podagent rooms-generate *)",
+      "Bash(python -m podagent rooms-regenerate *)",
+      "Bash(python -m podagent rooms-generate)"
+    ]
+  }
+}

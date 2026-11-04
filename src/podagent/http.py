@@ -3,6 +3,7 @@
 Each client takes a `transport` callable, so tests replace the network with
 recorded responses and can assert on every request that would have been sent.
 """
+
 from __future__ import annotations
 
 import json
@@ -12,9 +13,9 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable
 
 RETRY_STATUS = {429, 500, 502, 503, 504}
 
@@ -44,12 +45,34 @@ def urllib_transport(method: str, url: str, headers: dict, body: bytes | None, t
 class HttpError(RuntimeError):
     def __init__(self, method: str, url: str, status: int, body: str):
         super().__init__(f"{method} {url} -> HTTP {status}: {body[:500]}")
-        self.status = status
-        self.body = body
+        self.method, self.url, self.status, self.body = method, url, status, body
+
+    def short(self) -> str:
+        """One line: the host, the status and the API's own message if it sent one."""
+        host = urllib.parse.urlsplit(self.url).hostname or self.url
+        try:
+            data = json.loads(self.body)
+            err = data.get("error") if isinstance(data, dict) else None
+            text = (
+                (err.get("message") if isinstance(err, dict) else err)
+                or data.get("error_description")
+                or data.get("message")
+            )
+        except (ValueError, AttributeError):
+            text = None
+        return f"{host} returned HTTP {self.status}" + (f": {str(text)[:200]}" if text else "")
 
 
-def request(transport: Transport, method: str, url: str, headers: dict | None = None, body: bytes | None = None,
-            idempotent: bool = True, tries: int = 4, sleep=time.sleep) -> Response:
+def request(
+    transport: Transport,
+    method: str,
+    url: str,
+    headers: dict | None = None,
+    body: bytes | None = None,
+    idempotent: bool = True,
+    tries: int = 4,
+    sleep=time.sleep,
+) -> Response:
     """Send with retries. A request that creates something (idempotent=False) is only retried
     on 429, which means it was refused, never on 5xx, where it may already have succeeded."""
     retry_on = RETRY_STATUS if idempotent else {429}
@@ -59,10 +82,10 @@ def request(transport: Transport, method: str, url: str, headers: dict | None = 
         except (urllib.error.URLError, TimeoutError, ConnectionError):
             if not idempotent or attempt == tries - 1:
                 raise
-            sleep(2 ** attempt)
+            sleep(2**attempt)
             continue
         if r.status in retry_on and attempt < tries - 1:
-            sleep(2 ** attempt)
+            sleep(2**attempt)
             continue
         if r.status >= 400:
             raise HttpError(method, url, r.status, r.body.decode(errors="replace"))
@@ -71,8 +94,9 @@ def request(transport: Transport, method: str, url: str, headers: dict | None = 
 
 
 def form_body(data: dict) -> bytes:
-    flat = {k: ",".join(str(x) for x in v) if isinstance(v, (list, tuple)) else v
-            for k, v in data.items() if v is not None}
+    flat = {
+        k: ",".join(str(x) for x in v) if isinstance(v, (list, tuple)) else v for k, v in data.items() if v is not None
+    }
     return urllib.parse.urlencode(flat).encode()
 
 
@@ -84,8 +108,14 @@ def multipart(fields: dict, files: dict[str, Path] | None = None) -> tuple[bytes
     for k, p in (files or {}).items():
         p = Path(p)
         ctype = mimetypes.guess_type(p.name)[0] or "application/octet-stream"
-        out += (f'--{boundary}\r\nContent-Disposition: form-data; name="{k}"; filename="{p.name}"\r\n'
-                f"Content-Type: {ctype}\r\n\r\n").encode() + p.read_bytes() + b"\r\n"
+        out += (
+            (
+                f'--{boundary}\r\nContent-Disposition: form-data; name="{k}"; filename="{p.name}"\r\n'
+                f"Content-Type: {ctype}\r\n\r\n"
+            ).encode()
+            + p.read_bytes()
+            + b"\r\n"
+        )
     out += f"--{boundary}--\r\n".encode()
     return out, f"multipart/form-data; boundary={boundary}"
 
@@ -97,7 +127,7 @@ class Recorder:
         self.routes = list(routes or [])
         self.calls: list[dict] = []
 
-    def add(self, method: str, url_part: str, status: int = 200, body=None) -> "Recorder":
+    def add(self, method: str, url_part: str, status: int = 200, body=None) -> Recorder:
         raw = body if isinstance(body, bytes) else json.dumps(body if body is not None else {}).encode()
         self.routes.append((method, url_part, Response(status, raw)))
         return self

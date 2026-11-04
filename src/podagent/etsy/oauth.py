@@ -1,9 +1,11 @@
 """Etsy OAuth 2.0 with PKCE: sign in once in the browser, then refresh tokens automatically."""
+
 from __future__ import annotations
 
 import base64
 import hashlib
 import json
+import os
 import secrets
 import time
 import urllib.parse
@@ -25,8 +27,15 @@ def pkce_pair() -> tuple[str, str]:
 
 
 def auth_url(client_id: str, redirect_uri: str, state: str, challenge: str) -> str:
-    q = {"response_type": "code", "client_id": client_id, "redirect_uri": redirect_uri, "scope": " ".join(SCOPES),
-         "state": state, "code_challenge": challenge, "code_challenge_method": "S256"}
+    q = {
+        "response_type": "code",
+        "client_id": client_id,
+        "redirect_uri": redirect_uri,
+        "scope": " ".join(SCOPES),
+        "state": state,
+        "code_challenge": challenge,
+        "code_challenge_method": "S256",
+    }
     return AUTH_URL + "?" + urllib.parse.urlencode(q, quote_via=urllib.parse.quote)
 
 
@@ -40,9 +49,13 @@ class TokenStore:
         return self.path.exists()
 
     def save(self, tok: dict) -> None:
+        """Write the token file readable by its owner only (on Windows, rely on the user folder's ACLs)."""
         tok = {**tok, "obtained_at": int(self.clock())}
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(json.dumps(tok), encoding="utf-8")
+        self.path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        fd = os.open(self.path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(json.dumps(tok))
+        os.chmod(self.path, 0o600)
 
     def access_token(self) -> str:
         if not self.path.exists():
@@ -54,15 +67,30 @@ class TokenStore:
 
     def refresh(self, refresh_value: str) -> dict:
         body = form_body({"grant_type": "refresh_token", "client_id": self.client_id, "refresh_token": refresh_value})
-        tok = request(self.transport, "POST", TOKEN_URL, {"Content-Type": "application/x-www-form-urlencoded"}, body).json()
+        tok = request(
+            self.transport, "POST", TOKEN_URL, {"Content-Type": "application/x-www-form-urlencoded"}, body
+        ).json()
         self.save(tok)
         return tok
 
     def exchange(self, code: str, verifier: str, redirect_uri: str) -> dict:
-        body = form_body({"grant_type": "authorization_code", "client_id": self.client_id, "redirect_uri": redirect_uri,
-                          "code": code, "code_verifier": verifier})
-        tok = request(self.transport, "POST", TOKEN_URL, {"Content-Type": "application/x-www-form-urlencoded"}, body,
-                      idempotent=False).json()
+        body = form_body(
+            {
+                "grant_type": "authorization_code",
+                "client_id": self.client_id,
+                "redirect_uri": redirect_uri,
+                "code": code,
+                "code_verifier": verifier,
+            }
+        )
+        tok = request(
+            self.transport,
+            "POST",
+            TOKEN_URL,
+            {"Content-Type": "application/x-www-form-urlencoded"},
+            body,
+            idempotent=False,
+        ).json()
         self.save(tok)
         return tok
 
