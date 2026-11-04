@@ -3,6 +3,7 @@
 Hard limits come from the Etsy Open API v3 reference. Every check returns a list of
 problem strings; an empty list means it passes.
 """
+
 from __future__ import annotations
 
 import re
@@ -13,7 +14,7 @@ TAG_COUNT = 13
 TAG_MAX = 20
 SKU_MAX = 32
 SECTION_MAX = 24
-OPTION_MAX = 20            # longer variation option names are risky on Etsy; treated as a problem
+OPTION_MAX = 20  # longer variation option names are risky on Etsy; treated as a problem
 TITLE_ONCE = "%:&+"
 TITLE_EXTRA = set("™©®")
 TAG_EXTRA = set("-'™©®")

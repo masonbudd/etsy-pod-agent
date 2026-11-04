@@ -65,7 +65,7 @@ def test_set_values_edits_one_section_and_keeps_comments(tmp_path):
     p.write_text('[a]\nshop_id = 0  # keep me\n\n[etsy]\nshop_id = 0  # filled in\nname = "x"\n', encoding="utf-8")
     config.set_values(p, "etsy", {"shop_id": 4567, "name": 'say "hi"'})
     text = p.read_text(encoding="utf-8")
-    assert '[a]\nshop_id = 0  # keep me' in text
+    assert "[a]\nshop_id = 0  # keep me" in text
     assert "shop_id = 4567  # filled in" in text and 'name = "say \\"hi\\""' in text
     with pytest.raises(config.ConfigError):
         config.set_values(p, "etsy", {"missing_key": 1})

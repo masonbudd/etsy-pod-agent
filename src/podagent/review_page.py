@@ -1,5 +1,6 @@
 """One static HTML page per batch: every draft with its photos, copy, prices and checks,
 plus held designs with the reason. The shop owner reviews here, then publishes in Etsy."""
+
 from __future__ import annotations
 
 import json
@@ -68,19 +69,28 @@ def _draft_card(batch: Batch, item_id: str, cfg: dict) -> str:
     if draft.get("dry_run"):
         etsy = f"<p class='row warn'>Dry run: no draft was created. The exact API payload is in <code>items/{escape(item_id)}/etsy_payload.json</code>.</p>"
     else:
-        disc = "<span class='ok'>✓ AI disclosure set</span>" if batch.done(item_id, "disclosure") else \
-               "<span class='warn'>AI disclosure still to tick (disclosure_tasks.md)</span>"
-        etsy = f"<p class='row'>{disc}</p><a class='btn' href='{escape(draft.get('url', '#'))}'>Open the draft in Etsy</a>"
-    low = f" <span class='warn'>⚠ below minimum margin: {escape(', '.join(summ['low_margin']))}</span>" if summ["low_margin"] else ""
+        disc = (
+            "<span class='ok'>✓ AI disclosure set</span>"
+            if batch.done(item_id, "disclosure")
+            else "<span class='warn'>AI disclosure still to tick (disclosure_tasks.md)</span>"
+        )
+        etsy = (
+            f"<p class='row'>{disc}</p><a class='btn' href='{escape(draft.get('url', '#'))}'>Open the draft in Etsy</a>"
+        )
+    low = (
+        f" <span class='warn'>⚠ below minimum margin: {escape(', '.join(summ['low_margin']))}</span>"
+        if summ["low_margin"]
+        else ""
+    )
     return f"""<section class="card">
 <div><img class="hero" src="{escape(rel[0][0])}" alt="{escape(rel[0][1])}">
-<div class="thumbs">{''.join(f'<img src="{escape(s)}" alt="{escape(a)}">' for s, a in rel[1:])}</div></div>
-<div><p class="title">{escape(copy['title'])}</p>
-<p class="meta">{escape(it['sku'])} · section: {escape(copy['section'])} · {len(copy['title'])}/140 characters · {len(photos)} photos</p>
-<div class="chips">{''.join(f'<span class="chip">{escape(t)}</span>' for t in copy['tags'])}</div>
-<p class="row"><b>{_money(cfg, summ['min_price'])} – {_money(cfg, summ['max_price'])}</b> across {summ['enabled']} options, lowest margin {summ['lowest_margin']:.0%}{low}</p>
+<div class="thumbs">{"".join(f'<img src="{escape(s)}" alt="{escape(a)}">' for s, a in rel[1:])}</div></div>
+<div><p class="title">{escape(copy["title"])}</p>
+<p class="meta">{escape(it["sku"])} · section: {escape(copy["section"])} · {len(copy["title"])}/140 characters · {len(photos)} photos</p>
+<div class="chips">{"".join(f'<span class="chip">{escape(t)}</span>' for t in copy["tags"])}</div>
+<p class="row"><b>{_money(cfg, summ["min_price"])} – {_money(cfg, summ["max_price"])}</b> across {summ["enabled"]} options, lowest margin {summ["lowest_margin"]:.0%}{low}</p>
 <p class="row">{checks}</p>
-<p class="row">Print provider ({escape(prov.get('adapter', ''))}): {escape(prov.get('detail', ''))}</p>{f'<ul>{todo}</ul>' if todo else ''}
+<p class="row">Print provider ({escape(prov.get("adapter", ""))}): {escape(prov.get("detail", ""))}</p>{f"<ul>{todo}</ul>" if todo else ""}
 <details><summary>Description</summary><pre style="white-space:pre-wrap;font:inherit">{escape(_description(copy, cfg))}</pre></details>
 <details><summary>Prices and SKUs</summary><table><tr><th>Size</th><th>Frame</th><th>SKU</th><th>Price</th><th>Margin</th></tr>{rows}</table></details>
 {etsy}</div></section>"""
@@ -90,12 +100,15 @@ def _price_row(v: dict, cfg: dict) -> str:
     cls = "low" if v["low_margin"] else "off" if not v["enabled"] else ""
     price = _money(cfg, v["price"]) if v["enabled"] else "not offered"
     margin = "" if v["margin"] is None else f"{v['margin']:.0%}" + (" ⚠" if v["low_margin"] else "")
-    return (f"<tr class='{cls}'><td>{escape(v['size'])}</td><td>{escape(v['frame'] or '')}</td>"
-            f"<td>{escape(v['sku'])}</td><td>{price}</td><td>{margin}</td></tr>")
+    return (
+        f"<tr class='{cls}'><td>{escape(v['size'])}</td><td>{escape(v['frame'] or '')}</td>"
+        f"<td>{escape(v['sku'])}</td><td>{price}</td><td>{margin}</td></tr>"
+    )
 
 
 def _description(copy: dict, cfg: dict) -> str:
     from podagent.listing_copy import description
+
     return description(copy, cfg)
 
 
@@ -106,8 +119,8 @@ def _held_card(batch: Batch, item_id: str) -> str:
     _thumb(src, dst)
     h = it["held"]
     return f"""<section class="card"><div><img class="hero" src="{escape(dst.relative_to(batch.dir).as_posix())}" alt="held design {escape(item_id)}"></div>
-<div><p class="title">{escape(item_id)}</p><p class="meta">{escape(it['source'])} · held at: {escape(h['step'])}</p>
-<ul>{''.join(f"<li class='bad'>{escape(r)}</li>" for r in h['reasons'])}</ul><p class="row"><b>Suggested fix:</b> {escape(h['fix'])}</p></div></section>"""
+<div><p class="title">{escape(item_id)}</p><p class="meta">{escape(it["source"])} · held at: {escape(h["step"])}</p>
+<ul>{"".join(f"<li class='bad'>{escape(r)}</li>" for r in h["reasons"])}</ul><p class="row"><b>Suggested fix:</b> {escape(h["fix"])}</p></div></section>"""
 
 
 def _gate1(batch: Batch) -> str:
@@ -118,9 +131,13 @@ def _gate1(batch: Batch) -> str:
         f"<tr class='{'off' if c.get('decision') == 'rejected' else ''}'><td>{escape(c['id'])}</td><td>{escape(c['target_keyword'])}</td>"
         f"<td>{escape((c.get('decision') or 'waiting') + (', edited' if c.get('edited') else ''))}</td>"
         f"<td>{'' if c.get('estimate_usd') is None else '$' + format(c['estimate_usd'], '.3f')}</td>"
-        f"<td>{escape(c.get('note') or '')}</td></tr>" for c in cs)
-    return (f"<h2>Gate 1: concepts ({sum(1 for c in cs if c.get('decision') == 'approved')} of {len(cs)} approved)</h2>"
-            f"<table><tr><th>Concept</th><th>Target keyword</th><th>Decision</th><th>Est. cost</th><th>Note</th></tr>{rows}</table>")
+        f"<td>{escape(c.get('note') or '')}</td></tr>"
+        for c in cs
+    )
+    return (
+        f"<h2>Gate 1: concepts ({sum(1 for c in cs if c.get('decision') == 'approved')} of {len(cs)} approved)</h2>"
+        f"<table><tr><th>Concept</th><th>Target keyword</th><th>Decision</th><th>Est. cost</th><th>Note</th></tr>{rows}</table>"
+    )
 
 
 def write(batch: Batch, cfg: dict, report: dict) -> Path:
@@ -129,17 +146,22 @@ def write(batch: Batch, cfg: dict, report: dict) -> Path:
     held = [i for i, it in items.items() if it["status"] == "held"]
     waiting = [i for i in items if i not in drafted and i not in held]
     dry = any(items[i]["steps"]["draft"].get("dry_run") for i in drafted)
-    stats = [(len(items), "designs"), (len(drafted), "dry-run drafts" if dry else "Etsy drafts"), (len(held), "held"),
-             (f"{report['time']['pipeline_seconds']:.0f}s", "pipeline time"), (f"${report['api_cost_usd']['total']:.2f}", "image API cost")]
+    stats = [
+        (len(items), "designs"),
+        (len(drafted), "dry-run drafts" if dry else "Etsy drafts"),
+        (len(held), "held"),
+        (f"{report['time']['pipeline_seconds']:.0f}s", "pipeline time"),
+        (f"${report['api_cost_usd']['total']:.2f}", "image API cost"),
+    ]
     html = f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Review {escape(batch.id)}</title><style>{CSS}</style></head><body><main>
-<h1>Review batch {escape(batch.id)}</h1><p class="sub">Generated {escape(report['generated'])} · mode: {escape(batch.data['mode'])}</p>
+<h1>Review batch {escape(batch.id)}</h1><p class="sub">Generated {escape(report["generated"])} · mode: {escape(batch.data["mode"])}</p>
 <div class="banner">Nothing here is live. Each listing below is an Etsy <b>draft</b>. Check it, then click Publish in Etsy yourself.</div>
-<div class="stats">{''.join(f'<div class="stat"><b>{escape(str(n))}</b><span>{escape(l)}</span></div>' for n, l in stats)}</div>
+<div class="stats">{"".join(f'<div class="stat"><b>{escape(str(n))}</b><span>{escape(label)}</span></div>' for n, label in stats)}</div>
 {_gate1(batch)}
-<h2>Drafts ({len(drafted)})</h2>{''.join(_draft_card(batch, i, cfg) for i in drafted) or '<p class="sub">None yet.</p>'}
-<div class="held"><h2>Held ({len(held)})</h2>{''.join(_held_card(batch, i) for i in held) or '<p class="sub">Nothing held.</p>'}</div>
-{f'<h2>Still in progress ({len(waiting)})</h2><p class="sub">{escape(", ".join(waiting))}: run <code>podagent run {escape(batch.id)}</code> again.</p>' if waiting else ''}
+<h2>Drafts ({len(drafted)})</h2>{"".join(_draft_card(batch, i, cfg) for i in drafted) or '<p class="sub">None yet.</p>'}
+<div class="held"><h2>Held ({len(held)})</h2>{"".join(_held_card(batch, i) for i in held) or '<p class="sub">Nothing held.</p>'}</div>
+{f'<h2>Still in progress ({len(waiting)})</h2><p class="sub">{escape(", ".join(waiting))}: run <code>podagent run {escape(batch.id)}</code> again.</p>' if waiting else ""}
 </main></body></html>"""
     out = batch.dir / "review.html"
     out.write_text(html, encoding="utf-8")

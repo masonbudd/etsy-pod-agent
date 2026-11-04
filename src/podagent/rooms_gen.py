@@ -4,6 +4,7 @@ Each room is generated with one empty frame filled with flat light grey of a kno
 Calibration finds the frame and checks the shape. Candidates wait in rooms/candidates/
 until the user approves (moved into rooms/ and added to rooms.toml) or rejects them.
 """
+
 from __future__ import annotations
 
 import json
@@ -16,10 +17,12 @@ from podagent import costs, rules
 from podagent.config import parse_ratio
 from podagent.images import calibrate
 
-DEFAULT_PROMPT = ("Interior photograph of {scene}. One empty {frame} picture frame in portrait orientation, aspect ratio {ratio}, "
-                  "is the focal point and is fully visible near the centre of the image. The inside of the frame is completely "
-                  "filled with flat, even, plain light grey (#CCCCCC): no picture, texture, text, glass glare or mount. "
-                  "Soft natural light, realistic, uncluttered, no people.")
+DEFAULT_PROMPT = (
+    "Interior photograph of {scene}. One empty {frame} picture frame in portrait orientation, aspect ratio {ratio}, "
+    "is the focal point and is fully visible near the centre of the image. The inside of the frame is completely "
+    "filled with flat, even, plain light grey (#CCCCCC): no picture, texture, text, glass glare or mount. "
+    "Soft natural light, realistic, uncluttered, no people."
+)
 
 
 def candidates_file(rooms_dir: Path) -> Path:
@@ -45,8 +48,15 @@ def plan(cfg: dict, count: int) -> list[dict]:
     out = []
     for i in range(count):
         scene, frame, ratio = scenes[i % len(scenes)], frames[i % len(frames)], ratios[i % len(ratios)]
-        out.append({"name": rules.slugify(f"{scene} {frame}", 40), "scene": scene, "frame": frame, "ratio": ratio,
-                    "prompt": rc.get("prompt", DEFAULT_PROMPT).format(scene=scene, frame=frame, ratio=ratio)})
+        out.append(
+            {
+                "name": rules.slugify(f"{scene} {frame}", 40),
+                "scene": scene,
+                "frame": frame,
+                "ratio": ratio,
+                "prompt": rc.get("prompt", DEFAULT_PROMPT).format(scene=scene, frame=frame, ratio=ratio),
+            }
+        )
     return out
 
 
@@ -89,8 +99,14 @@ def regenerate(rooms_dir: Path, cfg: dict, client, name: str) -> dict:
     png, _ = client.generate(old["prompt"])
     path = rooms_dir / "candidates" / f"{new_name}.png"
     path.write_bytes(png)
-    rec = {**{k: old[k] for k in ("scene", "frame", "ratio", "prompt")}, "name": new_name, "file": path.name,
-           "cost_usd": costs.image_price(cfg) or 0.0, "status": "pending", **check(path, old["ratio"])}
+    rec = {
+        **{k: old[k] for k in ("scene", "frame", "ratio", "prompt")},
+        "name": new_name,
+        "file": path.name,
+        "cost_usd": costs.image_price(cfg) or 0.0,
+        "status": "pending",
+        **check(path, old["ratio"]),
+    }
     data["candidates"][new_name] = rec
     _save(rooms_dir, data)
     return rec
@@ -121,7 +137,9 @@ def approve(rooms_dir: Path, name: str, alt: str) -> dict:
         raise ValueError(f"{name}: no frame was found, so it can't be used for mockups")
     shutil.copy2(rooms_dir / "candidates" / rec["file"], rooms_dir / rec["file"])
     with open(rooms_dir / "rooms.toml", "a", encoding="utf-8") as fh:
-        fh.write(f'\n[[room]]\nfile = "{rec["file"]}"\nalt = "{alt.replace(chr(34), chr(39))}"\nratio = "{rec["ratio"]}"\n')
+        fh.write(
+            f'\n[[room]]\nfile = "{rec["file"]}"\nalt = "{alt.replace(chr(34), chr(39))}"\nratio = "{rec["ratio"]}"\n'
+        )
     rec["status"] = "approved"
     _save(rooms_dir, data)
     calibrate.calibrate_rooms(rooms_dir)

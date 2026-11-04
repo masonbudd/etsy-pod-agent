@@ -1,4 +1,5 @@
 """Crop a master image to each print ratio and save print-ready files."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -37,7 +38,9 @@ def ratio_groups(cfg: dict) -> dict[str, dict]:
     """Unique print ratios in the size table, each with the sizes that use it."""
     groups: dict[str, dict] = {}
     for s in cfg["sizes"]:
-        g = groups.setdefault(ratio_key(s["ratio"]), {"ratio": s["ratio"], "value": parse_ratio(s["ratio"]), "sizes": []})
+        g = groups.setdefault(
+            ratio_key(s["ratio"]), {"ratio": s["ratio"], "value": parse_ratio(s["ratio"]), "sizes": []}
+        )
         g["sizes"].append(s["code"])
     return groups
 

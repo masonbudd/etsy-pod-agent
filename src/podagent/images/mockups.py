@@ -1,4 +1,5 @@
 """Composite a design into calibrated room templates, keeping the room's light and shadow."""
+
 from __future__ import annotations
 
 import json
@@ -21,7 +22,7 @@ class Room:
     path: Path
     alt: str
     ratio: str
-    corners: np.ndarray       # TL, TR, BR, BL in the room image's pixels
+    corners: np.ndarray  # TL, TR, BR, BL in the room image's pixels
     ratio_measured: float
 
 
@@ -35,16 +36,26 @@ def load_rooms(rooms_dir: Path) -> list[Room]:
         if r["file"] not in cal:
             raise KeyError(f"{r['file']} is not calibrated: run `podagent rooms-calibrate`")
         c = cal[r["file"]]
-        rooms.append(Room(r["file"], rooms_dir / r["file"], r["alt"], r["ratio"], np.array(c["corners"], float),
-                          c["ratio_measured"]))
+        rooms.append(
+            Room(
+                r["file"],
+                rooms_dir / r["file"],
+                r["alt"],
+                r["ratio"],
+                np.array(c["corners"], float),
+                c["ratio_measured"],
+            )
+        )
     return rooms
 
 
 def homography(src, dst) -> np.ndarray:
     A, b = [], []
-    for (x, y), (u, v) in zip(src, dst):
-        A.append([x, y, 1, 0, 0, 0, -u * x, -u * y]); b.append(u)
-        A.append([0, 0, 0, x, y, 1, -v * x, -v * y]); b.append(v)
+    for (x, y), (u, v) in zip(src, dst, strict=True):
+        A.append([x, y, 1, 0, 0, 0, -u * x, -u * y])
+        b.append(u)
+        A.append([0, 0, 0, x, y, 1, -v * x, -v * y])
+        b.append(v)
     return np.linalg.solve(np.array(A, float), np.array(b, float))
 
 
@@ -56,7 +67,9 @@ def poly_mask(size: tuple[int, int], quad, ss: int = 4) -> Image.Image:
     return m.resize((W, H), Image.LANCZOS)
 
 
-def place(room: Image.Image, quad, art: Image.Image, light_strength: float = 1.0, cast_strength: float = 0.5) -> Image.Image:
+def place(
+    room: Image.Image, quad, art: Image.Image, light_strength: float = 1.0, cast_strength: float = 0.5
+) -> Image.Image:
     """Warp art into quad and multiply it by the blank panel's light, so shadows and gradients carry over."""
     q = np.array(quad, float)
     x0, y0 = np.maximum(np.floor(q.min(0)).astype(int) - 2, 0)
@@ -86,7 +99,7 @@ def room_mockup(room: Room, art: Image.Image, width: int = OUT_WIDTH) -> Image.I
     base = Image.open(room.path).convert("RGB")
     framed = crop_ratio(art, room.ratio_measured or parse_ratio(room.ratio))
     longest = int(max(base.size) * 0.8)
-    framed.thumbnail((longest, longest), Image.LANCZOS)          # no need to warp a 25 MP master
+    framed.thumbnail((longest, longest), Image.LANCZOS)  # no need to warp a 25 MP master
     out = place(base, room.corners, framed)
     if out.width != width:
         out = out.resize((width, round(out.height * width / out.width)), Image.LANCZOS)

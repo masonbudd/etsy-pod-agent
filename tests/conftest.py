@@ -51,24 +51,57 @@ def art(size=(768, 1152), seed=0, border=0) -> Image.Image:
     w, h = size
     d.rectangle([border, border, w - border - 1, h - border - 1], fill=palette[(seed + 1) % 5])
     d.ellipse([w * 0.2 + seed * 7, h * 0.15, w * 0.7, h * 0.45], fill=palette[(seed + 2) % 5])
-    d.polygon([(border, h * 0.7), (w * 0.5, h * (0.5 + 0.05 * seed)), (w - border, h * 0.8), (w - border, h - border), (border, h - border)],
-              fill=palette[(seed + 3) % 5])
+    d.polygon(
+        [
+            (border, h * 0.7),
+            (w * 0.5, h * (0.5 + 0.05 * seed)),
+            (w - border, h * 0.8),
+            (w - border, h - border),
+            (border, h - border),
+        ],
+        fill=palette[(seed + 3) % 5],
+    )
     return img
 
 
 def vision(**over) -> dict:
-    v = {"lettering": "", "spelling_ok": True, "spelling_notes": "", "ip_ok": True, "ip_notes": "", "border_seen": False,
-         "defects_ok": True, "defects_notes": "", "subject": "a test print"}
+    v = {
+        "lettering": "",
+        "spelling_ok": True,
+        "spelling_notes": "",
+        "ip_ok": True,
+        "ip_notes": "",
+        "border_seen": False,
+        "defects_ok": True,
+        "defects_notes": "",
+        "subject": "a test print",
+    }
     v.update(over)
     return v
 
 
 def good_copy(section="Abstract Prints", title=None) -> dict:
-    return {"title": title or "Abstract Sun Print | Modern Wall Art | Boho Living Room Decor | Minimalist Poster | Colourful Art Print",
-            "hook": "A bold sun over simple hills in warm, earthy colours.",
-            "tags": ["abstract print", "modern wall art", "boho decor", "minimalist poster", "sun print", "living room art",
-                     "colourful art", "earthy decor", "hallway art", "bedroom print", "retro poster", "nature print", "gift for her"],
-            "section": section}
+    return {
+        "title": title
+        or "Abstract Sun Print | Modern Wall Art | Boho Living Room Decor | Minimalist Poster | Colourful Art Print",
+        "hook": "A bold sun over simple hills in warm, earthy colours.",
+        "tags": [
+            "abstract print",
+            "modern wall art",
+            "boho decor",
+            "minimalist poster",
+            "sun print",
+            "living room art",
+            "colourful art",
+            "earthy decor",
+            "hallway art",
+            "bedroom print",
+            "retro poster",
+            "nature print",
+            "gift for her",
+        ],
+        "section": section,
+    }
 
 
 def write_json(path: Path, data) -> None:

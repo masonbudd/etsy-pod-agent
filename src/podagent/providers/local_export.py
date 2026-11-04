@@ -1,4 +1,5 @@
 """Universal fallback: print files grouped by ratio plus a SKU sheet, ready to upload to any provider."""
+
 from __future__ import annotations
 
 import csv
@@ -27,16 +28,30 @@ class LocalExport(Provider):
             if not dst.exists():
                 shutil.copy2(src, dst)
             files[key] = f"{key}/{dst.name}"
-        rows = [{"sku": v["sku"], "base_sku": ctx.base_sku, "size": v["size"], "frame": v["frame"] or "",
-                 "ratio": v["ratio"], "file": files[_key(v["ratio"])], "enabled": v["enabled"]} for v in ctx.variants]
+        rows = [
+            {
+                "sku": v["sku"],
+                "base_sku": ctx.base_sku,
+                "size": v["size"],
+                "frame": v["frame"] or "",
+                "ratio": v["ratio"],
+                "file": files[_key(v["ratio"])],
+                "enabled": v["enabled"],
+            }
+            for v in ctx.variants
+        ]
         _write_sheet(out / "sku_sheet.csv", ctx.base_sku, rows)
-        return Result("needs_action", f"{len(files)} print files, {len(rows)} SKUs in provider_export/",
-                      ["Upload provider_export/ to your print provider and set each product's SKU from sku_sheet.csv"],
-                      {"files": files})
+        return Result(
+            "needs_action",
+            f"{len(files)} print files, {len(rows)} SKUs in provider_export/",
+            ["Upload provider_export/ to your print provider and set each product's SKU from sku_sheet.csv"],
+            {"files": files},
+        )
 
 
 def _key(ratio: str) -> str:
     from podagent.images.crops import ratio_key
+
     return ratio_key(ratio)
 
 

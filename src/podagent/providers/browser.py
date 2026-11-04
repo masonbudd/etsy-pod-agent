@@ -4,6 +4,7 @@ Claude in Chrome, following a playbook written for that provider's website.
 Python never clicks anything. The skill tells Claude to stop and ask before every step the
 playbook marks [ASK], such as creating products or saving changes.
 """
+
 from __future__ import annotations
 
 import json
@@ -12,7 +13,7 @@ from pathlib import Path
 from podagent.providers.base import Check, ItemContext, Result
 from podagent.providers.local_export import LocalExport
 
-UPLOAD_LIMIT = 9_700_000        # Claude in Chrome's file_upload takes about 10 MB per call
+UPLOAD_LIMIT = 9_700_000  # Claude in Chrome's file_upload takes about 10 MB per call
 
 
 class Browser(LocalExport):
@@ -25,8 +26,12 @@ class Browser(LocalExport):
     def check(self, online: bool = False) -> list[Check]:
         pb = self.playbook()
         ok = bool(pb and pb.exists())
-        return [Check("browser playbook", ok, str(pb) if ok else "set provider.browser_playbook (see docs/browser-adapter.md)"),
-                Check("Claude in Chrome", True, "checked by Claude in the skill, not by Python")]
+        return [
+            Check(
+                "browser playbook", ok, str(pb) if ok else "set provider.browser_playbook (see docs/browser-adapter.md)"
+            ),
+            Check("Claude in Chrome", True, "checked by Claude in the skill, not by Python"),
+        ]
 
     def prepare(self, ctx: ItemContext) -> Result:
         res = super().prepare(ctx)
@@ -41,8 +46,12 @@ class Browser(LocalExport):
         tasks["playbook"] = str(self.playbook() or "")
         tasks["rule"] = "Stop and ask the user before any step marked [ASK] in the playbook."
         tasks_path.write_text(json.dumps(tasks, indent=1), encoding="utf-8")
-        return Result("needs_action", res.detail,
-                      [f"Run the browser playbook with Claude in Chrome: provider_export/browser_tasks.json"], res.data)
+        return Result(
+            "needs_action",
+            res.detail,
+            ["Run the browser playbook with Claude in Chrome: provider_export/browser_tasks.json"],
+            res.data,
+        )
 
 
 def upload_calls(root: Path, files: list[str]) -> list[list[str]]:

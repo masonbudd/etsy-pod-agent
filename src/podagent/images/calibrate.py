@@ -6,6 +6,7 @@ Room templates show an empty frame filled with plain light grey. Calibration:
 3. refines each edge at full size by finding where grey meets the frame,
 4. checks the measured shape against the ratio declared in rooms.toml.
 """
+
 from __future__ import annotations
 
 import json
@@ -34,7 +35,7 @@ def largest_blob_seed(mask: np.ndarray) -> tuple[int, int] | None:
     H, W = mask.shape
     seen = np.zeros_like(mask, bool)
     best_n, best_pixels = 0, None
-    for y, x in zip(*np.nonzero(mask)):
+    for y, x in zip(*np.nonzero(mask), strict=True):
         if seen[y, x]:
             continue
         q, pixels = deque([(y, x)]), []
@@ -77,6 +78,7 @@ def _hull(points: np.ndarray) -> np.ndarray:
 
     def cross(o, a, b):
         return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
+
     lower, upper = [], []
     for p in pts:
         while len(lower) >= 2 and cross(lower[-2], lower[-1], p) <= 0:
@@ -97,8 +99,12 @@ def fit_quad(mask: np.ndarray) -> np.ndarray:
     for deg in np.arange(-45, 45, 0.5):
         t = math.radians(deg)
         r = hp @ np.array([[math.cos(t), -math.sin(t)], [math.sin(t), math.cos(t)]])
-        idx = [np.argmin(r[:, 0] + r[:, 1]), np.argmax(r[:, 0] - r[:, 1]),
-               np.argmax(r[:, 0] + r[:, 1]), np.argmin(r[:, 0] - r[:, 1])]
+        idx = [
+            np.argmin(r[:, 0] + r[:, 1]),
+            np.argmax(r[:, 0] - r[:, 1]),
+            np.argmax(r[:, 0] + r[:, 1]),
+            np.argmin(r[:, 0] - r[:, 1]),
+        ]
         q = hp[idx]
         area = 0.5 * abs(sum(q[i][0] * q[(i + 1) % 4][1] - q[(i + 1) % 4][0] * q[i][1] for i in range(4)))
         if best is None or area > best[0]:
@@ -117,8 +123,12 @@ def _bilinear(L, xs, ys):
     xs, ys = np.clip(xs, 0, W - 1.001), np.clip(ys, 0, H - 1.001)
     x0, y0 = np.floor(xs).astype(int), np.floor(ys).astype(int)
     fx, fy = xs - x0, ys - y0
-    return (L[y0, x0] * (1 - fx) * (1 - fy) + L[y0, x0 + 1] * fx * (1 - fy)
-            + L[y0 + 1, x0] * (1 - fx) * fy + L[y0 + 1, x0 + 1] * fx * fy)
+    return (
+        L[y0, x0] * (1 - fx) * (1 - fy)
+        + L[y0, x0 + 1] * fx * (1 - fy)
+        + L[y0 + 1, x0] * (1 - fx) * fy
+        + L[y0 + 1, x0 + 1] * fx * fy
+    )
 
 
 def refine(L: np.ndarray, q: np.ndarray, unit: float, margin: float = 1.5) -> np.ndarray:
@@ -183,7 +193,9 @@ def fits_square_thumbnail(q: np.ndarray, size: tuple[int, int]) -> bool:
     W, H = size
     s = min(W, H)
     x0, y0 = (W - s) / 2, (H - s) / 2
-    return bool((q[:, 0] >= x0).all() and (q[:, 0] <= x0 + s).all() and (q[:, 1] >= y0).all() and (q[:, 1] <= y0 + s).all())
+    return bool(
+        (q[:, 0] >= x0).all() and (q[:, 0] <= x0 + s).all() and (q[:, 1] >= y0).all() and (q[:, 1] <= y0 + s).all()
+    )
 
 
 def load_room_list(rooms_dir: Path) -> list[dict]:
@@ -204,8 +216,12 @@ def calibrate_rooms(rooms_dir: Path) -> dict:
             warnings.append(f"frame measures {got:.3f} wide per 1 high; rooms.toml says {r['ratio']} ({want:.3f})")
         if i == 0 and not fits_square_thumbnail(q, img.size):
             warnings.append("first room: the frame does not fit Etsy's square search thumbnail")
-        out[r["file"]] = {"size": list(img.size), "corners": [[round(float(x), 1), round(float(y), 1)] for x, y in q],
-                          "ratio_measured": round(float(got), 4), "warnings": warnings}
+        out[r["file"]] = {
+            "size": list(img.size),
+            "corners": [[round(float(x), 1), round(float(y), 1)] for x, y in q],
+            "ratio_measured": round(float(got), 4),
+            "warnings": warnings,
+        }
         tiles.append(_overlay(img, q, r["file"]))
     (rooms_dir / "corners.json").write_text(json.dumps(out, indent=1), encoding="utf-8")
     _sheet(tiles).save(rooms_dir / "calibration_check.jpg", quality=85)
@@ -215,8 +231,10 @@ def calibrate_rooms(rooms_dir: Path) -> dict:
 def overlay_sheet(rooms_dir: Path) -> Path:
     """Redraw calibration_check.jpg from the saved corners.json, without recalibrating."""
     cal = json.loads((rooms_dir / "corners.json").read_text(encoding="utf-8"))
-    tiles = [_overlay(Image.open(rooms_dir / r["file"]).convert("RGB"), np.array(cal[r["file"]]["corners"]), r["file"])
-             for r in load_room_list(rooms_dir)]
+    tiles = [
+        _overlay(Image.open(rooms_dir / r["file"]).convert("RGB"), np.array(cal[r["file"]]["corners"]), r["file"])
+        for r in load_room_list(rooms_dir)
+    ]
     out = rooms_dir / "calibration_check.jpg"
     _sheet(tiles).save(out, quality=85)
     return out

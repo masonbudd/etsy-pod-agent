@@ -4,6 +4,7 @@ Code: borders, resolution against every size sold, crop loss, near-duplicates, b
 Claude (written to vision.json): spelling in lettering, IP, visible defects, a short subject line.
 `verdict()` merges both into one pass/hold record with reasons and a suggested fix.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -16,20 +17,21 @@ from podagent.config import parse_ratio
 from podagent.images.crops import crop_loss_pct
 
 VISION_FIELDS = {
-    "lettering": str,        # exact text visible in the design, "" if none
+    "lettering": str,  # exact text visible in the design, "" if none
     "spelling_ok": bool,
     "spelling_notes": str,
-    "ip_ok": bool,           # no brands, logos, characters, celebrities or living artists' signature styles
+    "ip_ok": bool,  # no brands, logos, characters, celebrities or living artists' signature styles
     "ip_notes": str,
-    "border_seen": bool,     # a margin or painted border around the art
-    "defects_ok": bool,      # no garbled shapes, extra limbs, watermarks or artefacts
+    "border_seen": bool,  # a margin or painted border around the art
+    "defects_ok": bool,  # no garbled shapes, extra limbs, watermarks or artefacts
     "defects_notes": str,
-    "subject": str,          # one short line describing the design, used for alt text
+    "subject": str,  # one short line describing the design, used for alt text
 }
-BAND_CAP = 0.12              # a uniform band deeper than this is background, not a border
+BAND_CAP = 0.12  # a uniform band deeper than this is background, not a border
 
 
 # -- borders ---------------------------------------------------------------
+
 
 def _side_band(a: np.ndarray) -> tuple[int, np.ndarray, float]:
     """Rows of `a` (row 0 = image edge, moving inward). Returns (band depth, band colour,
@@ -60,23 +62,35 @@ def border(img: Image.Image, min_pct: float) -> dict:
     for name, v in views.items():
         k, colour, edge_share = _side_band(v)
         pct = 100 * k / len(v)
-        sides[name] = {"pct": round(pct, 1), "colour": [int(c) for c in colour],
-                       "straight_edge": edge_share >= 0.6 and pct >= min_pct}
+        sides[name] = {
+            "pct": round(pct, 1),
+            "colour": [int(c) for c in colour],
+            "straight_edge": edge_share >= 0.6 and pct >= min_pct,
+        }
     hits = [s for s in sides.values() if s["straight_edge"]]
     same = hits and max(np.abs(np.array(h["colour"]) - np.array(hits[0]["colour"])).max() for h in hits) < 30
     found = len(hits) >= 3 and bool(same)
-    return {"found": found, "sides": sides,
-            "crop_px": {k: round(v["pct"] / 100 * (img.height if k in ("top", "bottom") else img.width))
-                        for k, v in sides.items() if v["straight_edge"]}}
+    return {
+        "found": found,
+        "sides": sides,
+        "crop_px": {
+            k: round(v["pct"] / 100 * (img.height if k in ("top", "bottom") else img.width))
+            for k, v in sides.items()
+            if v["straight_edge"]
+        },
+    }
 
 
 def trim_border(img: Image.Image, result: dict, safety_px: int = 2) -> Image.Image:
-    c = {k: result["crop_px"].get(k, 0) + (safety_px if k in result["crop_px"] else 0)
-         for k in ("left", "top", "right", "bottom")}
+    c = {
+        k: result["crop_px"].get(k, 0) + (safety_px if k in result["crop_px"] else 0)
+        for k in ("left", "top", "right", "bottom")
+    }
     return img.crop((c["left"], c["top"], img.width - c["right"], img.height - c["bottom"]))
 
 
 # -- resolution and crops --------------------------------------------------
+
 
 def resolution(w: int, h: int, sizes: list[dict], factor: int, min_dpi: float) -> dict:
     """DPI each size would print at after upscaling and cropping to that size's ratio."""
@@ -89,8 +103,13 @@ def resolution(w: int, h: int, sizes: list[dict], factor: int, min_dpi: float) -
         if dpi < min_dpi:
             too_small.append(s["code"])
     need = max(max(s["width_in"], s["height_in"] * parse_ratio(s["ratio"])) * min_dpi / factor for s in sizes)
-    return {"ok": not too_small, "too_small": too_small, "by_size": rows, "source_px": [w, h],
-            "min_source_width": int(need)}
+    return {
+        "ok": not too_small,
+        "too_small": too_small,
+        "by_size": rows,
+        "source_px": [w, h],
+        "min_source_width": int(need),
+    }
 
 
 def crop_warnings(w: int, h: int, sizes: list[dict], max_pct: float) -> list[str]:
@@ -106,6 +125,7 @@ def crop_warnings(w: int, h: int, sizes: list[dict], max_pct: float) -> list[str
 
 
 # -- duplicates ------------------------------------------------------------
+
 
 def dhash(img: Image.Image, n: int = 8) -> int:
     g = np.asarray(img.convert("L").resize((n + 1, n), Image.LANCZOS)).astype(int)
@@ -132,13 +152,17 @@ def hashes_of(folder: Path) -> dict[str, int]:
 
 # -- Claude's review -------------------------------------------------------
 
+
 def validate_vision(data: dict) -> list[str]:
     errors = [f"missing {k}" for k in VISION_FIELDS if k not in data]
-    errors += [f"{k} should be {t.__name__}" for k, t in VISION_FIELDS.items() if k in data and not isinstance(data[k], t)]
+    errors += [
+        f"{k} should be {t.__name__}" for k, t in VISION_FIELDS.items() if k in data and not isinstance(data[k], t)
+    ]
     return errors
 
 
 # -- merge -----------------------------------------------------------------
+
 
 def code_checks(img: Image.Image, name: str, cfg: dict, others: dict[str, int]) -> dict:
     c = cfg["checks"]
@@ -191,5 +215,11 @@ def verdict(code: dict, vision: dict, cfg: dict, expected_lettering: str = "") -
     if not vision.get("defects_ok", True):
         reasons.append("visible defect: " + (vision.get("defects_notes") or "flagged by review"))
         fixes.append("regenerate or retouch")
-    return {"verdict": "hold" if reasons else "pass", "reasons": reasons, "suggested_fix": "; ".join(dict.fromkeys(fixes)),
-            "warnings": code["crop_warnings"], "lettering": vision.get("lettering", ""), "subject": vision.get("subject", "")}
+    return {
+        "verdict": "hold" if reasons else "pass",
+        "reasons": reasons,
+        "suggested_fix": "; ".join(dict.fromkeys(fixes)),
+        "warnings": code["crop_warnings"],
+        "lettering": vision.get("lettering", ""),
+        "subject": vision.get("subject", ""),
+    }

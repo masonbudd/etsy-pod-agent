@@ -9,6 +9,7 @@ Research keeps phrases and numbers only. Anything that looks like a specific lis
 (titles, listing IDs, shop names, URLs) is dropped on load, so concepts are built from
 themes and buyer language, never from someone else's listing.
 """
+
 from __future__ import annotations
 
 import csv
@@ -28,7 +29,7 @@ URL = re.compile(r"https?://|etsy\.com/listing", re.I)
 class Signal:
     phrase: str
     source: str
-    score: float                  # 0-1, comparable across sources
+    score: float  # 0-1, comparable across sources
     searches: float | None = None
     competition: float | None = None
     sales: float | None = None
@@ -64,7 +65,11 @@ def from_keyword_csv(path: Path) -> list[Signal]:
     if not path.exists():
         return []
     with open(path, newline="", encoding="utf-8-sig") as fh:
-        return [s for row in csv.DictReader(fh) if (s := _make({k.strip().lower(): v for k, v in row.items() if k}, "keyword_csv"))]
+        return [
+            s
+            for row in csv.DictReader(fh)
+            if (s := _make({k.strip().lower(): v for k, v in row.items() if k}, "keyword_csv"))
+        ]
 
 
 def from_profittree(path: Path) -> list[Signal]:
@@ -76,7 +81,7 @@ def from_profittree(path: Path) -> list[Signal]:
     out = []
     for row in rows:
         row = {k: v for k, v in row.items() if k not in LISTING_KEYS}
-        if (s := _make(row, "profittree")):
+        if s := _make(row, "profittree"):
             out.append(s)
     return out
 
@@ -91,7 +96,7 @@ def gather(batch_dir: Path, root: Path, cfg: dict) -> dict:
     banned = cfg["checks"]["banned_terms"] + cfg["listing"].get("avoid_words", [])
     best: dict[str, Signal] = {}
     dropped = []
-    for name in ("profittree", "keyword_csv"):                 # earlier sources win ties
+    for name in ("profittree", "keyword_csv"):  # earlier sources win ties
         for s in sources[name]:
             if rules.find_terms(s.phrase, banned):
                 dropped.append(s.phrase)
@@ -99,10 +104,12 @@ def gather(batch_dir: Path, root: Path, cfg: dict) -> dict:
             if s.phrase not in best or s.score > best[s.phrase].score:
                 best[s.phrase] = s
     ranked = sorted(best.values(), key=lambda s: -s.score)[: rcfg.get("top_n", 30)]
-    result = {"sources": {k: len(v) for k, v in sources.items()},
-              "used": [k for k, v in sources.items() if v],
-              "dropped_banned": sorted(set(dropped)),
-              "signals": [asdict(s) for s in ranked]}
+    result = {
+        "sources": {k: len(v) for k, v in sources.items()},
+        "used": [k for k, v in sources.items() if v],
+        "dropped_banned": sorted(set(dropped)),
+        "signals": [asdict(s) for s in ranked],
+    }
     out = batch_dir / "research" / "research.json"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(result, indent=1), encoding="utf-8")

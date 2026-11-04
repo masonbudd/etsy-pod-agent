@@ -2,9 +2,9 @@ import json
 
 import numpy as np
 import pytest
+from conftest import SAMPLES, art, vision
 from PIL import Image, ImageDraw
 
-from conftest import SAMPLES, art, vision
 from podagent import checks
 from podagent.images import calibrate, crops, mockups, samples
 
@@ -60,7 +60,9 @@ def test_near_duplicates_by_perceptual_hash():
     c = art(seed=3)
     ha = checks.dhash(a)
     assert checks.hamming(ha, checks.dhash(b)) <= 4
-    assert checks.duplicates(ha, {"b": checks.dhash(b), "c": checks.dhash(c)}, 10) == ["b (distance %d)" % checks.hamming(ha, checks.dhash(b))]
+    assert checks.duplicates(ha, {"b": checks.dhash(b), "c": checks.dhash(c)}, 10) == [
+        f"b (distance {checks.hamming(ha, checks.dhash(b))})"
+    ]
 
 
 def test_vision_schema():
@@ -112,7 +114,9 @@ def test_calibration_reproduces_the_sample_rooms_saved_corners():
 def test_sample_rooms_carry_no_metadata():
     for f in (SAMPLES / "rooms").glob("*.jpg"):
         im = Image.open(f)
-        assert set(im.info) <= {"jfif", "jfif_density", "jfif_unit", "jfif_version", "dpi"} and len(im.getexif()) == 0, f.name
+        assert (
+            set(im.info) <= {"jfif", "jfif_density", "jfif_unit", "jfif_version", "dpi"} and len(im.getexif()) == 0
+        ), f.name
 
 
 def test_calibration_handles_a_frame_seen_at_an_angle():
@@ -131,7 +135,7 @@ def test_homography_maps_corners():
     dst = [(10, 20), (120, 25), (115, 180), (8, 170)]
     h = mockups.homography(src, dst)
     H = np.append(h, 1).reshape(3, 3)
-    for (x, y), (u, v) in zip(src, dst):
+    for (x, y), (u, v) in zip(src, dst, strict=True):
         p = H @ [x, y, 1]
         assert p[0] / p[2] == pytest.approx(u) and p[1] / p[2] == pytest.approx(v)
 

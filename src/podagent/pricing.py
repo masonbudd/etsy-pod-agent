@@ -5,10 +5,11 @@ fees(price) = (price * percentage fees + fixed fees) * (1 + VAT on fees).
 Solving for the price that hits the target margin:
 price = (cost + fixed * (1 + vat)) / (1 - pct * (1 + vat) - margin)
 """
+
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
 
 
 class PricingError(ValueError):
@@ -98,17 +99,37 @@ def price_table(cfg: dict) -> list[Variant]:
             cost = s.get("cost_framed") if framed else s["cost_print"]
             fixed = s.get("price_framed" if framed else "price_print")
             if cost is None:
-                rows.append(Variant(s["name"], s["code"], f["name"], f.get("code"), s["ratio"], None, None, None, False))
+                rows.append(
+                    Variant(s["name"], s["code"], f["name"], f.get("code"), s["ratio"], None, None, None, False)
+                )
                 continue
             price = round(float(fixed), 2) if fixed is not None else price_for(cost, fees, target, rule)
             m = margin_at(price, cost, fees)
-            rows.append(Variant(s["name"], s["code"], f["name"], f.get("code"), s["ratio"], cost, price, round(m, 4),
-                                True, fixed is not None, m < floor))
+            rows.append(
+                Variant(
+                    s["name"],
+                    s["code"],
+                    f["name"],
+                    f.get("code"),
+                    s["ratio"],
+                    cost,
+                    price,
+                    round(m, 4),
+                    True,
+                    fixed is not None,
+                    m < floor,
+                )
+            )
     return rows
 
 
 def summary(rows: list[Variant]) -> dict:
     live = [r for r in rows if r.enabled]
-    return {"min_price": min(r.price for r in live), "max_price": max(r.price for r in live),
-            "variants": len(rows), "enabled": len(live), "low_margin": [f"{r.size} / {r.frame}" for r in live if r.low_margin],
-            "lowest_margin": min(r.margin for r in live)}
+    return {
+        "min_price": min(r.price for r in live),
+        "max_price": max(r.price for r in live),
+        "variants": len(rows),
+        "enabled": len(live),
+        "low_margin": [f"{r.size} / {r.frame}" for r in live if r.low_margin],
+        "lowest_margin": min(r.margin for r in live),
+    }

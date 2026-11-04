@@ -4,6 +4,7 @@ Run `python scripts/make_samples.py` to redraw them. Output is deterministic. Th
 kingfisher-moon.png, is a painted design with a margin added by `add_margin`.
 The drawn rooms are test fixtures for calibration; the demo's sample rooms are images in samples/rooms.
 """
+
 from __future__ import annotations
 
 import math
@@ -12,7 +13,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
-DESIGN_SIZE = (1024, 1536)    # the shape most image models produce for portrait art
+DESIGN_SIZE = (1024, 1536)  # the shape most image models produce for portrait art
 ROOM_SIZE = (1600, 2000)
 PANEL_GREY = (204, 204, 206)
 
@@ -43,6 +44,7 @@ def _font(size: int) -> ImageFont.ImageFont:
 
 # -- designs ---------------------------------------------------------------
 
+
 def sun_over_hills() -> Image.Image:
     W, H = DESIGN_SIZE
     img = Image.new("RGB", DESIGN_SIZE, (244, 226, 200))
@@ -66,11 +68,11 @@ def good_morning() -> Image.Image:
         size -= 4
     f = _font(size)
     d.text(((W - d.textlength(text, font=f)) / 2, 190), text, font=f, fill=(44, 40, 36))
-    d.ellipse([212, 1180, 812, 1290], fill=(250, 244, 232))                      # saucer
+    d.ellipse([212, 1180, 812, 1290], fill=(250, 244, 232))  # saucer
     d.rounded_rectangle([302, 760, 722, 1230], radius=90, fill=(250, 244, 232))  # cup
-    d.rectangle([302, 860, 722, 930], fill=(62, 92, 140))                        # blue band
-    d.ellipse([680, 860, 860, 1080], outline=(250, 244, 232), width=34)          # handle
-    for x in (420, 512, 604):                                                    # steam
+    d.rectangle([302, 860, 722, 930], fill=(62, 92, 140))  # blue band
+    d.ellipse([680, 860, 860, 1080], outline=(250, 244, 232), width=34)  # handle
+    for x in (420, 512, 604):  # steam
         pts = [(x + 18 * math.sin(t / 14), 700 - t) for t in range(0, 230, 6)]
         d.line(pts, fill=(250, 244, 232), width=12, joint="curve")
     return img
@@ -92,11 +94,14 @@ DESIGNS = {"sun-over-hills.png": sun_over_hills, "good-morning.png": good_mornin
 
 # -- rooms -----------------------------------------------------------------
 
+
 def _frame(img: Image.Image, panel: tuple[int, int, int, int], frame_rgb, thick: int, shadow=(18, 26)) -> Image.Image:
     """Shadow, frame moulding, then a flat grey panel the calibrator can find."""
     x0, y0, x1, y1 = panel
     sh = Image.new("L", img.size, 0)
-    ImageDraw.Draw(sh).rectangle([x0 - thick + shadow[0], y0 - thick + shadow[1], x1 + thick + shadow[0], y1 + thick + shadow[1]], fill=110)
+    ImageDraw.Draw(sh).rectangle(
+        [x0 - thick + shadow[0], y0 - thick + shadow[1], x1 + thick + shadow[0], y1 + thick + shadow[1]], fill=110
+    )
     sh = sh.filter(ImageFilter.GaussianBlur(22))
     img = Image.composite(Image.new("RGB", img.size, (30, 26, 22)), img, sh)
     d = ImageDraw.Draw(img)
@@ -117,13 +122,13 @@ def living_room() -> Image.Image:
     d.rectangle([0, 1570, W, 1600], fill=(226, 220, 206))
     img = _frame(img, (540, 340, 1060, 990), (32, 30, 30), 26)
     d = ImageDraw.Draw(img)
-    d.rounded_rectangle([220, 1150, 1380, 1520], radius=50, fill=(176, 92, 62))         # sofa back
-    d.rounded_rectangle([170, 1300, 1430, 1560], radius=40, fill=(160, 82, 54))         # seat
-    d.rounded_rectangle([300, 1190, 760, 1360], radius=40, fill=(190, 104, 70))          # cushions
+    d.rounded_rectangle([220, 1150, 1380, 1520], radius=50, fill=(176, 92, 62))  # sofa back
+    d.rounded_rectangle([170, 1300, 1430, 1560], radius=40, fill=(160, 82, 54))  # seat
+    d.rounded_rectangle([300, 1190, 760, 1360], radius=40, fill=(190, 104, 70))  # cushions
     d.rounded_rectangle([840, 1190, 1300, 1360], radius=40, fill=(190, 104, 70))
     for x in (230, 1350):
         d.rectangle([x, 1560, x + 24, 1620], fill=(60, 40, 28))
-    d.line([(1490, 1600), (1490, 900)], fill=(50, 44, 40), width=10)                    # floor lamp
+    d.line([(1490, 1600), (1490, 900)], fill=(50, 44, 40), width=10)  # floor lamp
     d.polygon([(1400, 900), (1580, 900), (1540, 760), (1440, 760)], fill=(236, 212, 158))
     return _grain(img, 2, 11)
 
@@ -135,19 +140,19 @@ def sideboard() -> Image.Image:
     d.rectangle([0, 1720, W, H], fill=(150, 120, 96))
     img = _frame(img, (404, 640, 854, 1240), (196, 154, 108), 24, shadow=(10, 6))
     d = ImageDraw.Draw(img)
-    d.rectangle([150, 1264, 1450, 1690], fill=(110, 72, 48))                            # sideboard
+    d.rectangle([150, 1264, 1450, 1690], fill=(110, 72, 48))  # sideboard
     d.rectangle([150, 1264, 1450, 1290], fill=(134, 92, 62))
     for x in (580, 1020):
         d.line([(x, 1300), (x, 1680)], fill=(88, 56, 38), width=4)
     for x in (200, 1380):
         d.rectangle([x, 1690, x + 22, 1760], fill=(70, 46, 30))
-    d.ellipse([1080, 1040, 1260, 1264], fill=(52, 82, 80))                              # vase
+    d.ellipse([1080, 1040, 1260, 1264], fill=(52, 82, 80))  # vase
     for ang in (-60, -30, 0, 25, 55):
         t = math.radians(ang - 90)
         tip = (1170 + 300 * math.cos(t), 1060 + 300 * math.sin(t))
         d.line([(1170, 1060), tip], fill=(86, 92, 60), width=6)
         d.ellipse([tip[0] - 26, tip[1] - 14, tip[0] + 26, tip[1] + 14], fill=(110, 124, 74))
-    d.rectangle([930, 1204, 1050, 1264], fill=(230, 175, 70))                           # books
+    d.rectangle([930, 1204, 1050, 1264], fill=(230, 175, 70))  # books
     d.rectangle([945, 1160, 1040, 1204], fill=(48, 96, 104))
     return _grain(img, 2, 12)
 
@@ -157,20 +162,23 @@ def bedroom() -> Image.Image:
     img = _light(Image.new("RGB", ROOM_SIZE, (156, 176, 198)), 1.05, 0.92, 1.03, 0.94)
     img = _frame(img, (580, 380, 1020, 1040), (244, 242, 236), 24)
     d = ImageDraw.Draw(img)
-    d.rounded_rectangle([250, 1180, 1350, 1520], radius=30, fill=(120, 90, 70))          # headboard
-    d.rectangle([200, 1420, 1400, H], fill=(238, 232, 222))                             # bedding
-    d.rounded_rectangle([320, 1360, 760, 1500], radius=40, fill=(230, 222, 206))         # pillows
+    d.rounded_rectangle([250, 1180, 1350, 1520], radius=30, fill=(120, 90, 70))  # headboard
+    d.rectangle([200, 1420, 1400, H], fill=(238, 232, 222))  # bedding
+    d.rounded_rectangle([320, 1360, 760, 1500], radius=40, fill=(230, 222, 206))  # pillows
     d.rounded_rectangle([840, 1360, 1280, 1500], radius=40, fill=(230, 222, 206))
-    d.rectangle([200, 1700, 1400, 1800], fill=(200, 120, 90))                           # throw
-    d.rectangle([1440, 1500, 1580, 1720], fill=(150, 112, 80))                          # bedside table
+    d.rectangle([200, 1700, 1400, 1800], fill=(200, 120, 90))  # throw
+    d.rectangle([1440, 1500, 1580, 1720], fill=(150, 112, 80))  # bedside table
     d.rectangle([1490, 1380, 1510, 1500], fill=(60, 54, 50))
     d.polygon([(1440, 1380), (1560, 1380), (1530, 1290), (1470, 1290)], fill=(238, 214, 160))
     return _grain(img, 2, 13)
 
 
 # drawn test rooms and the panel each one's frame holds (x0, y0, x1, y1)
-TEST_ROOMS = {"living-room": (living_room, (540, 340, 1060, 990)), "sideboard": (sideboard, (404, 640, 854, 1240)),
-              "bedroom": (bedroom, (580, 380, 1020, 1040))}
+TEST_ROOMS = {
+    "living-room": (living_room, (540, 340, 1060, 990)),
+    "sideboard": (sideboard, (404, 640, 854, 1240)),
+    "bedroom": (bedroom, (580, 380, 1020, 1040)),
+}
 
 
 def write_designs(designs_dir: Path) -> None:

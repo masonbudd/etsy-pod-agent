@@ -11,6 +11,7 @@ That file is gitignored. Prefix a line with "re:" for a regular expression, and 
 A line containing "scan:allow" is skipped.
 Exit code 1 means findings.
 """
+
 from __future__ import annotations
 
 import fnmatch
@@ -31,7 +32,8 @@ PATTERNS = {  # scan:allow
     "JWT": re.compile(r"\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}"),  # scan:allow
     "OAuth token": re.compile(r"\b\d{6,}\.[A-Za-z0-9_-]{40,}"),  # scan:allow
     "secret assignment": re.compile(  # scan:allow
-        r"(?i)\b[A-Z0-9_]*(?:api_?key|secret|token|password|keystring)[A-Z0-9_]*\s*[:=]\s*['\"]?[A-Za-z0-9_\-./+]{16,}"),  # scan:allow
+        r"(?i)\b[A-Z0-9_]*(?:api_?key|secret|token|password|keystring)[A-Z0-9_]*\s*[:=]\s*['\"]?[A-Za-z0-9_\-./+]{16,}"
+    ),  # scan:allow
     "email address": re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b"),  # scan:allow
     "home folder path": re.compile(r"(?:[A-Za-z]:\\+[Uu]sers\\+|/Users/|/home/)(?!<)[A-Za-z0-9._-]+"),  # scan:allow
 }
@@ -66,6 +68,7 @@ def image_text(path: Path) -> str:
     """Text stored inside an image: PNG text chunks and EXIF values."""
     try:
         from PIL import Image
+
         with Image.open(path) as im:
             parts = [f"{k}={v}" for k, v in im.info.items() if isinstance(v, (str, bytes))]
             parts += [str(v) for v in im.getexif().values()]
@@ -114,8 +117,10 @@ def main(argv: list[str]) -> int:
     files = [f for f in files if f.is_file() and f.name != ".scan-denylist"]
     deny = load_denylist()
     findings = [hit for f in files for hit in scan_file(f, deny)]
-    print(f"Secret and personal-data scan: {len(files)} files, "
-          f"{len(PATTERNS)} patterns, {len(deny)} private terms, {len(findings)} findings")
+    print(
+        f"Secret and personal-data scan: {len(files)} files, "
+        f"{len(PATTERNS)} patterns, {len(deny)} private terms, {len(findings)} findings"
+    )
     for hit in findings:
         print("  " + hit)
     return 1 if findings else 0

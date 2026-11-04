@@ -1,4 +1,5 @@
 """Adapter registry. Add a provider by subclassing providers.base.Provider and listing it here."""
+
 from __future__ import annotations
 
 from podagent.providers.base import Provider
