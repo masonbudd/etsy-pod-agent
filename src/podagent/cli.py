@@ -1,0 +1,265 @@
+"""Command line: `podagent <command>`. Run `podagent -h` for the list.
+
+Exit codes: 0 done, 2 waiting for input (Claude's review or copy), 1 error.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import shutil
+import sys
+from pathlib import Path
+
+from podagent import config as C
+from podagent import doctor, pipeline, providers, report, review_page
+from podagent.state import Batch
+
+WAITING = 2
+
+
+def _ws(args) -> C.Workspace:
+    return C.Workspace(Path(args.root).resolve())
+
+
+def _load(args):
+    ws = _ws(args)
+    return ws, C.load(ws.config_path), C.load_env(ws.root)
+
+
+def _etsy(ws, env, transport=None):
+    from podagent.etsy.client import EtsyClient
+    from podagent.etsy.oauth import TokenStore
+    for k in ("ETSY_KEYSTRING", "ETSY_SHARED_SECRET"):
+        if not env.get(k):
+            raise SystemExit(f"{k} is missing from .env")
+    kw = {"transport": transport} if transport else {}
+    store = TokenStore(ws.secrets / "etsy_token.json", env["ETSY_KEYSTRING"], **kw)
+    return EtsyClient(env["ETSY_KEYSTRING"], env["ETSY_SHARED_SECRET"], store, **kw)
+
+
+def _batch(ws, cfg, batch_id) -> Batch:
+    return Batch.load(ws.batch_dir(cfg, batch_id))
+
+
+def _finish(ctx) -> None:
+    review_page.write(ctx.batch, ctx.cfg, report.write(ctx.batch))
+
+
+# -- commands --------------------------------------------------------------
+
+def cmd_init(args) -> int:
+    ws = _ws(args)
+    made = []
+    if not ws.config_path.exists():
+        shutil.copy2(C.EXAMPLE_CONFIG, ws.config_path); made.append("config.toml")
+    env_example = C.REPO / ".env.example"
+    if not (ws.root / ".env").exists() and env_example.exists():
+        shutil.copy2(env_example, ws.root / ".env"); made.append(".env")
+    cfg = C.load(ws.config_path)
+    for key in ("inbox", "batches", "existing_designs"):
+        ws.path(cfg, key).mkdir(parents=True, exist_ok=True)
+    rooms = ws.path(cfg, "rooms")
+    if not rooms.exists():
+        shutil.copytree(C.REPO / "samples" / "rooms", rooms); made.append(f"{rooms.name}/ (sample rooms)")
+    print("Created: " + (", ".join(made) or "nothing new"))
+    print("Next: edit config.toml and .env, then run `podagent doctor`.")
+    return 0
+
+
+def cmd_doctor(args) -> int:
+    ws, cfg, env = _load(args)
+    checks = doctor.run(ws, cfg, env, online=args.online, etsy_factory=lambda: _etsy(ws, env))
+    print(doctor.format_table(checks))
+    return 0 if all(c.ok for c in checks) else 1
+
+
+def cmd_etsy_login(args) -> int:
+    from podagent.etsy.oauth import login
+    ws, cfg, env = _load(args)
+    client = _etsy(ws, env)
+    login(client.tokens, env.get("ETSY_REDIRECT_URI", "http://localhost:3456/callback"))
+    print("Signed in. Next: `podagent etsy-discover`.")
+    return 0
+
+
+def cmd_etsy_discover(args) -> int:
+    """Find the shop's IDs and write them to config.toml. Read-only on Etsy."""
+    ws, cfg, env = _load(args)
+    etsy = _etsy(ws, env)
+    shop = etsy.me()["shop_id"]
+    found = {"shop_id": shop}
+    lists = {"shipping_profile_id": (etsy.shipping_profiles(shop), "shipping_profile_id", "title"),
+             "return_policy_id": (etsy.return_policies(shop), "return_policy_id", "return_deadline"),
+             "readiness_state_id": (etsy.readiness_states(shop), "readiness_state_id", "processing_days_display_label"),
+             "production_partner_id": (etsy.production_partners(shop), "production_partner_id", "partner_name")}
+    for key, (rows, idk, label) in lists.items():
+        print(f"{key}: " + ("; ".join(f"{r[idk]} = {r.get(label)}" for r in rows) or "none found"))
+        if len(rows) == 1 or (rows and args.first):
+            found[key] = rows[0][idk]
+        elif rows and not cfg["etsy"].get(key):
+            print(f"  more than one: set {key} in config.toml yourself (or rerun with --first)")
+    C.set_values(ws.config_path, "etsy", found)
+    print("Saved to config.toml [etsy]: " + ", ".join(f"{k}={v}" for k, v in found.items()))
+    return 0
+
+
+def cmd_rooms_calibrate(args) -> int:
+    from podagent.images import calibrate
+    ws, cfg, _ = _load(args)
+    rooms = ws.path(cfg, "rooms")
+    for name, r in calibrate.calibrate_rooms(rooms).items():
+        print(f"{name}: ratio {r['ratio_measured']}" + "".join(f"\n  WARNING {w}" for w in r["warnings"]))
+    print(f"Check the overlay: {rooms / 'calibration_check.jpg'}")
+    return 0
+
+
+def cmd_new(args) -> int:
+    ws, cfg, _ = _load(args)
+    b = pipeline.new_batch(ws, cfg, count=args.count)
+    print(json.dumps({"batch": b.id, "items": {i: it["sku"] for i, it in b.items.items()}}, indent=1))
+    return 0
+
+
+def cmd_run(args) -> int:
+    ws, cfg, env = _load(args)
+    batch = _batch(ws, cfg, args.batch)
+    ctx = pipeline.Context(ws, cfg, env, batch, dry_run=args.dry_run, provider=providers.get(cfg, env),
+                           etsy_factory=lambda: _etsy(ws, env))
+    res = pipeline.run(ctx, report_fn=_finish)
+    res["review_page"] = str(batch.dir / "review.html")
+    print(json.dumps(res, indent=1))
+    return WAITING if res["waiting"] else (1 if res["errors"] else 0)
+
+
+def cmd_brief(args) -> int:
+    from podagent import listing_copy
+    ws, cfg, _ = _load(args)
+    b = _batch(ws, cfg, args.batch)
+    items = [{"item": i, "sku": it["sku"], "subject": it["steps"].get("checks", {}).get("subject", ""),
+              "lettering": it["steps"].get("checks", {}).get("lettering", ""),
+              "errors_last_time": it["steps"].get("copy", {}).get("errors", [])}
+             for i, it in b.items.items() if it["status"] != "held" and b.done(i, "checks") and not b.done(i, "copy")]
+    print(json.dumps(listing_copy.brief(cfg, items), indent=1, ensure_ascii=False))
+    return 0
+
+
+def cmd_status(args) -> int:
+    ws, cfg, _ = _load(args)
+    b = _batch(ws, cfg, args.batch)
+    for i, it in b.items.items():
+        steps = " ".join(f"{s}:{it['steps'].get(s, {}).get('status', '-')}" for s in pipeline.ORDER)
+        print(f"{i:28} {it['status']:8} {steps}")
+        if it["status"] == "held":
+            print(f"{'':28} held: {'; '.join(it['held']['reasons'])}")
+    return 0
+
+
+def cmd_mark(args) -> int:
+    ws, cfg, _ = _load(args)
+    b = _batch(ws, cfg, args.batch)
+    b.mark(args.item, args.step, args.status, note=args.note or "marked by hand")
+    print(f"{args.item} {args.step}: {args.status}")
+    return 0
+
+
+def cmd_release(args) -> int:
+    ws, cfg, _ = _load(args)
+    b = _batch(ws, cfg, args.batch)
+    d = b.item_dir(args.item)
+    for f in ("checks.json", "copy_errors.json"):
+        (d / f).unlink(missing_ok=True)
+    b.release(args.item, [s for s in pipeline.ORDER if s != "draft"])
+    print(f"{args.item} is back in the queue. Run `podagent run {b.id}`.")
+    return 0
+
+
+def cmd_trim_border(args) -> int:
+    from PIL import Image
+    from podagent import checks
+    ws, cfg, _ = _load(args)
+    b = _batch(ws, cfg, args.batch)
+    d = b.item_dir(args.item)
+    img = Image.open(d / "source.png")
+    found = checks.border(img, cfg["checks"]["border_min_pct"])
+    if not found["found"]:
+        print("No border detected in code. Edit the file by hand, then `podagent release`.")
+        return 1
+    shutil.copy2(d / "source.png", d / "source_before_trim.png")
+    checks.trim_border(img, found).save(d / "source.png")
+    for f in ("master.png", "vision.json", "preview.jpg"):
+        (d / f).unlink(missing_ok=True)
+    shutil.rmtree(d / "print", ignore_errors=True)
+    shutil.rmtree(d / "photos", ignore_errors=True)
+    cmd_release(args)
+    print(f"Trimmed {found['crop_px']} px. Claude reviews the trimmed design on the next run.")
+    return 0
+
+
+def cmd_provider_link(args) -> int:
+    ws, cfg, env = _load(args)
+    b = _batch(ws, cfg, args.batch)
+    prov = providers.get(cfg, env)
+    ctx = pipeline.Context(ws, cfg, env, b, provider=prov)
+    for i, it in b.items.items():
+        if not it["steps"].get("draft", {}).get("listing_id"):
+            continue
+        res = prov.link(pipeline.item_context(ctx, i), it["steps"].get("provider", {}).get("plan"))
+        print(f"{i}: {res.status} - {res.detail}" + "".join(f"\n  - {t}" for t in res.todo))
+    return 0
+
+
+def cmd_review(args) -> int:
+    ws, cfg, _ = _load(args)
+    b = _batch(ws, cfg, args.batch)
+    print(review_page.write(b, cfg, report.write(b)))
+    return 0
+
+
+def cmd_demo(args) -> int:
+    from podagent import demo
+    res = demo.run(Path(args.out))
+    print(f"Drafted (dry run): {', '.join(res['drafted']) or 'none'}")
+    for item, reasons in res["held"].items():
+        print(f"Held: {item}: {'; '.join(reasons)}")
+    print(f"Open the review page: {res['review_page']}")
+    return 1 if res["errors"] else 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    p = argparse.ArgumentParser(prog="podagent", description="Checked Etsy draft listings for print-on-demand wall art.")
+    p.add_argument("--root", default=".", help="workspace folder holding config.toml (default: current folder)")
+    sub = p.add_subparsers(dest="cmd", required=True)
+    sub.add_parser("init", help="create config.toml, .env and folders").set_defaults(fn=cmd_init)
+    s = sub.add_parser("doctor", help="check every connection"); s.add_argument("--online", action="store_true",
+                       help="also make free read-only API calls"); s.set_defaults(fn=cmd_doctor)
+    sub.add_parser("etsy-login", help="sign in to Etsy (OAuth PKCE)").set_defaults(fn=cmd_etsy_login)
+    s = sub.add_parser("etsy-discover", help="find shop, shipping, returns and processing IDs")
+    s.add_argument("--first", action="store_true", help="take the first option where there are several"); s.set_defaults(fn=cmd_etsy_discover)
+    sub.add_parser("rooms-calibrate", help="detect frame corners in the room templates").set_defaults(fn=cmd_rooms_calibrate)
+    s = sub.add_parser("new", help="start a batch from designs/inbox"); s.add_argument("--count", type=int); s.set_defaults(fn=cmd_new)
+    s = sub.add_parser("run", help="advance a batch as far as it can go"); s.add_argument("batch")
+    s.add_argument("--dry-run", action="store_true", help="write Etsy payloads instead of creating drafts"); s.set_defaults(fn=cmd_run)
+    s = sub.add_parser("brief", help="print the copywriting brief for Claude"); s.add_argument("batch"); s.set_defaults(fn=cmd_brief)
+    s = sub.add_parser("status", help="show each item's steps"); s.add_argument("batch"); s.set_defaults(fn=cmd_status)
+    s = sub.add_parser("mark", help="record a step done by hand (e.g. disclosure)")
+    s.add_argument("batch"); s.add_argument("item"); s.add_argument("step"); s.add_argument("--status", default="done")
+    s.add_argument("--note"); s.set_defaults(fn=cmd_mark)
+    s = sub.add_parser("release", help="put a held design back in the queue"); s.add_argument("batch"); s.add_argument("item")
+    s.set_defaults(fn=cmd_release)
+    s = sub.add_parser("trim-border", help="cut a detected border off a held design"); s.add_argument("batch"); s.add_argument("item")
+    s.set_defaults(fn=cmd_trim_border)
+    s = sub.add_parser("provider-link", help="after publishing: connect listings at the print provider"); s.add_argument("batch")
+    s.set_defaults(fn=cmd_provider_link)
+    s = sub.add_parser("review", help="rebuild the review page and report"); s.add_argument("batch"); s.set_defaults(fn=cmd_review)
+    s = sub.add_parser("demo", help="run the pipeline on the bundled samples, no accounts needed")
+    s.add_argument("--out", default="demo_output"); s.set_defaults(fn=cmd_demo)
+    args = p.parse_args(argv)
+    try:
+        return args.fn(args)
+    except (C.ConfigError, FileNotFoundError, FileExistsError, KeyError) as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
