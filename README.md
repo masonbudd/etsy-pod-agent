@@ -35,8 +35,9 @@ flowchart TD
     R --> G2{"Gate 2: you check each draft<br/>and click Publish in Etsy"}
 ```
 
-The top path (research, concepts, Gate 1, generation) is phase 2 and is not built yet.
-Everything from your own designs onwards works today.
+Two ways in: **generate mode** (the top path) researches what sells, proposes concepts and
+generates the approved ones; **inbox mode** starts from your own designs in `designs/inbox/`.
+From the quality checks onwards, both follow the same path.
 
 **Division of labour.** Python does everything with a right answer: Etsy limits, prices,
 image measurements, state, API calls. Claude does the judgement inside the skill: reading
@@ -58,8 +59,8 @@ Etsy's reply and the save, the next run finds the draft by title instead of maki
 | Print provider | fulfilling orders | Yes for selling. `local_export` works with any provider; `prodigi` uses its API ([docs/providers.md](docs/providers.md)) |
 | Claude in Chrome extension | ticking Etsy's AI-disclosure box; the browser adapter | Yes for live drafts |
 | Real-ESRGAN (`realesrgan-ncnn-vulkan`) | sharper upscaling | Optional; falls back to a plain resize |
-| OpenAI API key | generating designs and rooms | Phase 2 only |
-| Research source (ProfitTree MCP or a keyword CSV) | finding themes | Phase 2 only |
+| OpenAI API key | generating designs and room templates | Generate mode only |
+| Research source (ProfitTree MCP, or a keyword CSV from any tool) | finding themes and buyer phrases | Generate mode only |
 
 `/setup-shop` walks through each one and `podagent doctor` reports what is missing.
 
@@ -73,34 +74,51 @@ pip install -e .
 
 Then, in Claude Code, from the repo folder:
 
-1. `/setup-shop`: creates `config.toml` and `.env`, connects Etsy and your print provider, checks every tool.
-2. Put your designs (portrait PNG or JPEG) in `designs/inbox/`.
-3. `/create-listings 5`: checks, mockups, copy, prices, provider files, Etsy drafts and a review page.
+1. `/setup-shop`: creates `config.toml` and `.env`, connects Etsy and your print provider,
+   checks every tool, and can generate room templates for your mockups.
+2. Either put your own designs (portrait PNG or JPEG) in `designs/inbox/` and run
+   `/create-listings 5 inbox`, or run `/create-listings 5 generate` for new designs.
+   Generate mode stops after proposing concepts and waits for your decision on each.
+3. You get checks, mockups, copy, prices, provider files, Etsy drafts and a review page.
 
 **Run your first batch as a dry run** (`podagent run <batch> --dry-run`) and read the Etsy
 payload it writes. Then run it for real, open each draft in Etsy, and check it before you publish.
 
 ## Demo mode
 
-No accounts, no network, about 15 seconds:
+No accounts, no network, about 30 seconds:
 
 ```bash
 podagent demo
 ```
 
-It runs the pipeline on three bundled sample designs and writes
-`demo_output/batches/demo/review.html`. Two designs become dry-run drafts; one is held
-because it has a painted border. All code steps run for real: checks, upscaling, print
-files, room calibration, mockups, copy validation, pricing, the print-file export, the
-exact Etsy API payload, the review page and the report. The two judgement steps replay
-outputs Claude wrote for these samples (`samples/recorded/`). The sample designs and rooms
-are drawn in code (`scripts/make_samples.py`).
+It runs both modes, each in its own sample workspace:
+
+- **Inbox** (`demo_output/inbox/batches/demo/review.html`): three sample designs. Two become
+  dry-run drafts; one is held because it has a painted border.
+- **Generate** (`demo_output/generate/batches/demo-generate/`): sample keyword research
+  (one banned phrase is dropped), three concepts, and a Gate 1 page (`concepts.html`) with
+  cost estimates. Sample decisions approve one concept, edit and approve another, and reject
+  the third. The two approved concepts go through the real OpenAI client code, with the
+  network replaced by a replay that returns sample images. Then the same pipeline runs to
+  dry-run drafts.
+
+All code steps run for real: research ranking, concept validation and costing, the Gate 1
+record, checks, upscaling, print files, room calibration, mockups, copy validation,
+pricing, the print-file export, the exact Etsy API payload, the review page and the report.
+The judgement steps (concepts, visual review, copy) replay outputs Claude wrote for these
+samples (`samples/recorded/`). The sample keyword numbers are invented. The sample designs
+and rooms are drawn in code (`scripts/make_samples.py`).
 
 ## How approval works, and why
 
-- **Gate 1 (phase 2): concepts before images.** Claude proposes concepts, each with its
-  target keyword, why it should sell, the prompt and the estimated cost. Nothing is
-  generated until you approve, edit or reject each one. This is where taste and spend are decided.
+![Gate 1 page: three concepts with target keyword, reasoning, estimated cost and the decision on each](docs/gate1-page.png)
+
+- **Gate 1: concepts before images.** Claude proposes concepts, each with its target
+  keyword, why it should sell, the prompt and the estimated cost. Nothing is generated
+  until you approve, edit or reject each one. This is where taste and spend are decided.
+  The code generates approved concepts only, and an approval is cleared if the prompt
+  changes afterwards.
 - **Gate 2: drafts, never live listings.** The pipeline creates Etsy drafts and a review
   page. Publishing is your click in Etsy. The Etsy client refuses any request that would
   change a listing's state, so the code can't publish even by mistake.
@@ -118,16 +136,22 @@ description also always carries an AI-disclosure line from your config.
 - **Etsy:** drafts are free. Etsy charges its listing fee when you publish. Transaction and
   payment-processing fees are built into the prices (`[pricing.fees]` in config).
 - **Print provider:** you pay per order. Base costs in config drive the prices.
-- **Image generation (phase 2):** priced per image from `[images.price_usd]`. Claude shows
-  the estimate before Gate 1 and the run report shows the spend.
+- **Image generation:** priced per image from `[images.price_usd]` (estimates in the example
+  config; check OpenAI's pricing). The Gate 1 page shows each concept's cost and the worst
+  case with one retry. Generation stops before a batch passes `images.max_batch_usd`. A
+  request is recorded before it is sent and the image is saved the moment it arrives, so a
+  rerun never pays twice. A held design is regenerated at most once, with the fix added to
+  the prompt. The run report shows the spend.
+- **Room templates:** `podagent rooms-generate` prints the cost and spends nothing until you
+  add `--confirm`.
 - **Real-ESRGAN:** free, runs locally.
 - **Claude:** your Claude Code plan. The run report doesn't include it.
 
 ## Testing
 
-The pipeline is covered by the demo and by pytest with mocked API responses for Etsy and
-Prodigi, built from their API references. It has not been run against live Etsy or provider
-accounts from this repository. GitHub Actions runs a secret scan, the tests and the demo on
+The pipeline is covered by the demo and by pytest with mocked API responses for Etsy,
+Prodigi and the OpenAI Images API, built from their API references. It has not been run
+against live Etsy, provider or OpenAI accounts from this repository. GitHub Actions runs a secret scan, the tests and the demo on
 every push (Ubuntu and Windows, Python 3.11 and 3.13).
 
 ```bash
@@ -136,8 +160,10 @@ pytest
 ```
 
 The tests cover Etsy's title, tag, SKU and section limits, pricing and margins, cost
-estimates, state and resume (no duplicate drafts, no repeated work), the checks, room
-calibration, the Etsy and Prodigi request payloads, and the secret scanner.
+estimates and the budget cap, state and resume (no duplicate drafts, no paying twice),
+Gate 1 (only approved concepts are generated), regeneration limits, research filtering,
+the checks, room calibration and generation, the Etsy, Prodigi and OpenAI request
+payloads, and the secret scanner.
 
 ## Limitations
 
@@ -150,6 +176,11 @@ calibration, the Etsy and Prodigi request payloads, and the secret scanner.
   publishing. Its API reference doesn't say how artwork attaches to a mapped variant: check
   one in Prodigi's dashboard before your first sale.
 - Without Real-ESRGAN, large prints come from a plain resize and look softer.
+- Research from the ProfitTree MCP happens inside Claude Code: Claude saves the results and
+  the pipeline reads them. Without it, research comes from a keyword CSV you export from any tool.
+- Image costs are estimates from your config, not OpenAI's bill.
+- Generated room templates vary. Calibration rejects ones without a clear grey frame, but
+  check each by eye before approving.
 - The sample rooms are flat illustrations. Swap in your own room photos (`rooms/rooms.toml`, then `podagent rooms-calibrate`).
 
 ## Results

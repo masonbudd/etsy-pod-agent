@@ -47,10 +47,27 @@ Edit the file, then run `podagent doctor`. Config errors appear first.
 
 **6. Claude in Chrome.** Needed for the AI-disclosure tick on each draft and for the browser adapter. Check the extension's tools are available. If not, tell the user how to install the Claude in Chrome extension.
 
-**7. Rooms for mockups.** The sample rooms work as they are. To use their own:
-1. Add room images, each with one empty frame filled with plain light grey, to `rooms/`.
-2. List them in `rooms/rooms.toml` with the frame's ratio (`"4:5"`, `"3:4"`, `"2:3"` or `"ISO"`) and a short alt-text phrase. The first room becomes each listing's main photo.
-3. Run `podagent rooms-calibrate`, open `rooms/calibration_check.jpg` and show it to the user.
-4. Ask them to approve each room. Fix any warning: a ratio mismatch means the ratio in `rooms.toml` is wrong, and the main-photo warning means the frame won't fit Etsy's square search thumbnail.
+**7. Rooms for mockups.** The sample rooms work as they are. The user can replace them two ways.
 
-**8. Finish.** Run `podagent doctor --online` (free, read-only calls) and show the table. Tell the user in plain words what is still missing. Suggest a first batch with `--dry-run`.
+*Generate rooms* (needs `OPENAI_API_KEY`):
+1. Agree the scenes, frame colours and ratios with the user and set `[rooms]` in `config.toml`.
+2. Run `podagent rooms-generate --count 3`. It prints the cost and spends nothing. Show the user and ask.
+3. On a yes, run it again with `--confirm`. Each room is generated with an empty grey frame of a known ratio, then calibrated. Results go to `rooms/candidates/`.
+4. Show the user each candidate image and its warnings. For each one they choose:
+   - `podagent rooms-approve <name> --alt "in a black frame above a linen sofa"` adds it to `rooms/rooms.toml`;
+   - `podagent rooms-regenerate <name> --confirm` makes a new one (costs one image);
+   - `podagent rooms-reject <name>` drops it.
+   A candidate with no frame found can't be approved.
+
+*Use your own room photos:*
+1. Add room images, each with one empty frame filled with plain light grey, to `rooms/`.
+2. List them in `rooms/rooms.toml` with the frame's ratio (`"4:5"`, `"3:4"`, `"2:3"` or `"ISO"`) and a short alt-text phrase.
+3. Run `podagent rooms-calibrate`, open `rooms/calibration_check.jpg` and ask the user to approve each room.
+
+In both cases the first room in `rooms.toml` becomes each listing's main photo, so its frame must fit Etsy's square search thumbnail. Remove the sample rooms from `rooms.toml` when the user's own are in.
+
+**8. Research source (for generate mode).** Check whether ProfitTree MCP tools are available. If not, the user can keep a `research/keywords.csv` with columns `keyword, searches, competition, sales` (numbers optional) from any keyword tool.
+
+**9. Image model (for generate mode).** Set `[images]` model, size and quality, and check `[images.price_usd]` against OpenAI's current pricing. Generation refuses to run without a price, and `max_batch_usd` caps each batch.
+
+**10. Finish.** Run `podagent doctor --online` (free, read-only calls) and show the table. Tell the user in plain words what is still missing. Suggest a first batch with `--dry-run`.
