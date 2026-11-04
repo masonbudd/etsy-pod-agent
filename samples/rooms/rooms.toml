@@ -1,5 +1,4 @@
 # Room templates for mockups, in photo order: the first room is the listing's main photo.
-# These sample rooms are for the demo only and are not covered by the MIT licence.
 # To use your own rooms, add images with an empty frame filled with plain light grey,
 # list them here with the frame's ratio, then run `podagent rooms-calibrate`.
 

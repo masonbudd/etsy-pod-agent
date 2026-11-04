@@ -183,7 +183,7 @@ payloads, and the secret scanner.
 - Image costs are estimates from your config, not OpenAI's bill.
 - Generated room templates vary. Calibration rejects ones without a clear grey frame, but
   check each by eye before approving.
-- The sample rooms are for the demo. Generate your own in `/setup-shop`, or add your own room
+- Swap the sample rooms for your own: generate them in `/setup-shop`, or add room
   photos (`rooms/rooms.toml`, then `podagent rooms-calibrate`).
 
 ## Results
@@ -195,7 +195,7 @@ Generalised from the author's production workflow, which put over 300 prints liv
 ```
 .claude/skills/        setup-shop and create-listings skills
 src/podagent/          pipeline: checks, images, Etsy, providers, review page, report
-samples/               demo-only designs, rooms and recorded Claude outputs
+samples/               sample designs, rooms and recorded Claude outputs for the demo
 scripts/               secret scan, sample drawing
 tests/                 pytest suite
 docs/                  providers, browser adapter, screenshot
@@ -205,5 +205,4 @@ Contributors: enable the secret-scan hook with `git config core.hooksPath .githo
 
 ## License
 
-MIT, for the code and documentation. The images in `samples/` are for the demo only and are
-not covered by the MIT licence.
+MIT
