@@ -87,7 +87,7 @@ def inventory_body(variants: list[dict], cfg: dict) -> dict:
                 "offerings": [
                     {
                         "price": float(price),
-                        "quantity": QUANTITY if r["enabled"] else 0,
+                        "quantity": QUANTITY,  # Etsy needs one quantity across all products; is_enabled hides the rest
                         "is_enabled": r["enabled"],
                         "readiness_state_id": cfg["etsy"]["readiness_state_id"],
                     }

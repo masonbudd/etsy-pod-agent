@@ -174,10 +174,10 @@ description also always carries an AI-disclosure line from your config.
 ## Testing
 
 The pipeline is covered by the demo and by pytest with mocked API responses for Etsy,
-Prodigi and the OpenAI Images API, built from their API references. It has not been run
-against live Etsy, provider or OpenAI accounts from this repository. GitHub Actions runs a
-format and lint check (ruff), a secret scan, the tests and the demo on every push (Ubuntu
-and Windows, Python 3.11 and 3.13).
+Prodigi and the OpenAI Images API, built from their API references. Inbox mode has been
+tested against the live Etsy API. The Prodigi adapter and generate mode are tested against
+recorded API responses. GitHub Actions runs a format and lint check (ruff), a secret scan,
+the tests and the demo on every push (Ubuntu and Windows, Python 3.11 and 3.13).
 
 ```bash
 pip install -e ".[dev]"
@@ -203,8 +203,6 @@ payloads, and the secret scanner.
 - Research from the ProfitTree MCP happens inside Claude Code: Claude saves the results and
   the pipeline reads them. Without it, research comes from a keyword CSV you export from any tool.
 - Image costs are estimates from your config, not OpenAI's bill.
-- Options you don't offer (such as a frame on a print-only size) are sent to Etsy disabled,
-  with quantity 0. Check how they look on your first live draft.
 - Generated room templates vary. Calibration rejects ones without a clear grey frame, but
   check each by eye before approving.
 - Swap the sample rooms for your own: generate them in `/setup-shop`, or add room

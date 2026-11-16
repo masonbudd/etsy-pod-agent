@@ -100,7 +100,8 @@ def test_draft_is_created_with_photos_and_inventory(tmp_path, cfg, token_file):
     inv = json.loads(next(c for c in rec.calls if c["method"] == "PUT")["body"])
     assert len(inv["products"]) == len(cfg["sizes"]) * 4 and inv["sku_on_property"] == [513, 514]
     off = [p for p in inv["products"] if not p["offerings"][0]["is_enabled"]]
-    assert len(off) == 3 and all(p["offerings"][0]["quantity"] == 0 for p in off)
+    assert len(off) == 3
+    assert len({p["offerings"][0]["quantity"] for p in inv["products"]}) == 1  # Etsy rejects mixed quantities
     assert all(len(p["sku"]) <= 32 for p in inv["products"])
     assert all("(" not in v for p in inv["products"] for pv in p["property_values"] for v in pv["values"])
 
